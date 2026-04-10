@@ -3,7 +3,7 @@
 
 defmod AlexaCookieRefresh at +*06:00:00 {
   my $token = 'change-me';;
-  my $refresh = qx(curl -fsS -X POST -H 'x-auth-token: $token' http://127.0.0.1:8080/api/refresh);;
+  my $refresh = qx(curl -fsS -X POST -H 'x-auth-token: $token' http://127.0.0.1:58080/api/refresh);;
   my $cookie  = qx(/opt/alexa-cookie-service/scripts/fhem_fetch_cookie.sh);;
   Log 1, "AlexaCookieRefresh executed";;
 }

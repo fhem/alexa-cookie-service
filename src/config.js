@@ -17,7 +17,7 @@ const dataDir = process.env.DATA_DIR || '/data';
 
 module.exports = {
   host: process.env.HOST || '0.0.0.0',
-  port: envInt('PORT', 8080),
+  port: envInt('PORT', 58080),
   logLevel: process.env.LOG_LEVEL || 'combined',
   authToken: process.env.AUTH_TOKEN || '',
   dataDir,
@@ -30,7 +30,7 @@ module.exports = {
   acceptLanguage: process.env.ACCEPT_LANGUAGE || 'de-DE',
   proxyOwnIp: process.env.PROXY_OWN_IP || '',
   proxyListenBind: process.env.PROXY_LISTEN_BIND || '0.0.0.0',
-  proxyPort: envInt('PROXY_PORT', 18090),
+  proxyPort: envInt('PROXY_PORT', 58090),
   proxyOnly: envBool('PROXY_ONLY', true),
   setupProxy: envBool('SETUP_PROXY', true),
   appName: process.env.APP_NAME || 'FHEM EchoDevice Cookie Service',

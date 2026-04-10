@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVICE_URL="${SERVICE_URL:-http://127.0.0.1:8080}"
+SERVICE_URL="${SERVICE_URL:-http://127.0.0.1:58080}"
 AUTH_TOKEN="${AUTH_TOKEN:-}"
 OUT_FILE="${OUT_FILE:-/opt/fhem/cache/alexa-cookie-external-cookie.txt}"
 

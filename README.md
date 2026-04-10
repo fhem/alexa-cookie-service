@@ -48,19 +48,19 @@ docker compose up -d --build
 ### 3. Status prüfen
 
 ```bash
-curl -H "x-auth-token: change-me" http://127.0.0.1:18080/api/status
+curl -H "x-auth-token: change-me" http://127.0.0.1:58080/api/status
 ```
 
 ### 4. Login starten
 
 ```bash
-curl -X POST -H "x-auth-token: change-me" http://127.0.0.1:18080/api/login/start
+curl -X POST -H "x-auth-token: change-me" http://127.0.0.1:58080/api/login/start
 ```
 
 Danach den Proxy im Browser aufrufen:
 
 ```text
-http://<PROXY_OWN_IP>:18090/
+http://<PROXY_OWN_IP>:58090/
 ```
 
 ## Datenhaltung
@@ -85,13 +85,13 @@ Typische Varianten:
 ### Variante A: FHEM spiegelt nur den Cookie lokal
 
 ```bash
-SERVICE_URL=http://127.0.0.1:18080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-cookie.txt ./scripts/fhem_fetch_cookie.sh
+SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-cookie.txt ./scripts/fhem_fetch_cookie.sh
 ```
 
 ### Variante B: FHEM spiegelt den kompletten Zustand lokal
 
 ```bash
-SERVICE_URL=http://127.0.0.1:18080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-state.json ./scripts/fhem_dump_cookie_json.sh
+SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-state.json ./scripts/fhem_dump_cookie_json.sh
 ```
 
 ## Sicherheitshinweise
@@ -107,6 +107,6 @@ SERVICE_URL=http://127.0.0.1:18080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache
 - MFA, Captcha und Regionseffekte bleiben möglich.
 - Der initiale Login ist absichtlich browsergestützt; das ist robuster als ein erzwungener Headless-Flow.
 
-## Wann Codex sinnvoll wäre
+## Einbindung in  `37_echodevice.pm`
 
-Dieses Paket ist sofort nutzbar. Ein Wechsel in Codex wäre nur dann sinnvoll, wenn du im nächsten Schritt eine echte, versionsgenaue Anpassung direkt an `37_echodevice.pm` oder einen vollständigen FHEM-Patch erzeugen willst.
+
