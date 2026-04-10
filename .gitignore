@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data
+data/
+/data/
+*.log
+npm-debug.log*
+
+# Coverage and build output
+coverage/
+dist/
+build/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+
+# Git metadata from exported archives or nested checkouts
+.git/
