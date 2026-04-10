@@ -35,9 +35,42 @@ Zielbild:
 cp .env.example .env
 ```
 
+Sicheren `AUTH_TOKEN` erzeugen und in `.env` eintragen:
+
+```bash
+openssl rand -hex 32
+```
+
 Wichtig:
 - `PROXY_OWN_IP` muss die Adresse oder den Hostnamen enthalten, unter dem du den Login-Proxy im Browser wirklich aufrufst
 - `AUTH_TOKEN` setzen, wenn die API nicht offen im LAN stehen soll
+
+### Umgebungsvariablen
+
+| Variable | Status | Standardwert | Bedeutung |
+| --- | --- | --- | --- |
+| `HOST` | Optional | `0.0.0.0` | Bind-Adresse der REST-API im Container |
+| `PORT` | Optional | `58080` | Port der REST-API im Container |
+| `AUTH_TOKEN` | Empfohlen | leer | Shared Secret fuer `x-auth-token`; im produktiven Betrieb praktisch Pflicht |
+| `DATA_DIR` | Optional | `/data` | Basisverzeichnis fuer persistente Servicedaten |
+| `STATE_FILE` | Optional | `${DATA_DIR}/alexa-registration.json` | Persistierter Alexa-Registrierungszustand |
+| `METADATA_FILE` | Optional | `${DATA_DIR}/service-metadata.json` | Metadaten zur letzten Aktualisierung |
+| `COOKIE_EXPORT_FILE` | Optional | `${DATA_DIR}/cookie.txt` | Zieldatei fuer den exportierten Cookie |
+| `DEBUG_HTML_DIR` | Optional | `${DATA_DIR}/debug-html` | Ablageort fuer Debug-Artefakte aus dem Login-Flow |
+| `AMAZON_PAGE` | Optional | `amazon.de` | Ziel-Region fuer den Amazon-Login |
+| `BASE_AMAZON_PAGE` | Optional | Wert von `AMAZON_PAGE` | Basis-Domain fuer den Login-Flow |
+| `ACCEPT_LANGUAGE` | Optional | `de-DE` | Sprach-Header fuer den Login-Flow |
+| `PROXY_OWN_IP` | Pflicht | leer | Von Browsern erreichbare IP oder DNS-Name des Docker-Hosts fuer den Login-Proxy |
+| `PROXY_LISTEN_BIND` | Optional | `0.0.0.0` | Bind-Adresse des Login-Proxys im Container |
+| `PROXY_PORT` | Optional | `58090` | Port des Login-Proxys im Container |
+| `PROXY_ONLY` | Optional | `true` | Startet den Login standardmaessig im Proxy-Modus |
+| `SETUP_PROXY` | Optional | `true` | Aktiviert die Proxy-Initialisierung fuer den Login-Flow |
+| `APP_NAME` | Optional | `FHEM EchoDevice Cookie Service` | Anzeigename des virtuellen Geraets bei Amazon |
+| `USE_HERMES` | Optional | `false` | Aktiviert Hermes-spezifisches Verhalten von `alexa-cookie2` |
+| `REFRESH_SCHEDULE_HOURS` | Optional | `24` | Intervall fuer den automatischen Refresh |
+| `REFRESH_MIN_AGE_HOURS` | Optional | `6` | Mindestalter des Zustands vor einem automatischen Refresh |
+| `REQUEST_TIMEOUT_MS` | Optional | `30000` | Timeout fuer Netzwerkoperationen in Millisekunden |
+| `LOG_LEVEL` | Optional | `combined` | Format/Level fuer HTTP-Request-Logging |
 
 ### 2. Starten
 
