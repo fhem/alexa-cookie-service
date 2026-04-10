@@ -4,7 +4,7 @@ const morgan = require('morgan');
 const fs = require('fs');
 const config = require('./config');
 const { readJson, writeJson, writeText, ensureDirForFile } = require('./store');
-const { generateAlexaCookie, refreshAlexaCookie } = require('./alexa');
+const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
 
 ensureDirForFile(config.stateFile);
 ensureDirForFile(config.metadataFile);
@@ -26,10 +26,10 @@ function buildBaseOptions() {
     proxyPort: config.proxyPort,
     proxyOnly: config.proxyOnly,
     setupProxy: config.setupProxy,
-    appName: config.appName,
+    deviceAppName: config.appName,
     useHermes: config.useHermes,
     debug: false,
-    logger: console,
+    logger: (...args) => console.log(...args),
     callbackEndpoint: '/api/login/callback',
     closeAfterLogin: true,
     proxyRootPath: '/',
@@ -90,6 +90,15 @@ function persistState(state, source = 'unknown') {
   return enriched;
 }
 
+function isProxyFlowNotice(error) {
+  return Boolean(error?.message && error.message.startsWith('Please open http://'));
+}
+
+function extractProxyUrl(error) {
+  const match = error?.message?.match(/Please open (http:\/\/\S+)\s+with your browser/i);
+  return match ? match[1] : `http://${config.proxyOwnIp || 'HOSTNAME_MISSING'}:${config.proxyPort}/`;
+}
+
 function getStatus() {
   const state = loadState();
   const updatedAt = state?.serviceUpdatedAt || null;
@@ -127,6 +136,7 @@ async function performRefresh(reason = 'manual') {
 }
 
 let refreshInFlight = null;
+let proxyFlowActive = false;
 async function refreshSingleton(reason = 'manual') {
   if (!refreshInFlight) {
     refreshInFlight = performRefresh(reason).finally(() => {
@@ -134,6 +144,12 @@ async function refreshSingleton(reason = 'manual') {
     });
   }
   return refreshInFlight;
+}
+
+async function stopProxyFlowIfActive() {
+  if (!proxyFlowActive) return;
+  await stopProxyServer();
+  proxyFlowActive = false;
 }
 
 app.get('/healthz', (req, res) => {
@@ -155,22 +171,53 @@ app.get('/api/state', requireAuth, (req, res) => {
   res.json(raw ? state : sanitizeState(state));
 });
 
+function beginLoginFlow(res, options, source) {
+  let responded = false;
+
+  startAlexaCookieFlow(options, {
+    onProxyReady(error) {
+      proxyFlowActive = true;
+      if (responded) return;
+      responded = true;
+      res.status(202).json({
+        message: error.message,
+        proxyUrl: extractProxyUrl(error)
+      });
+    },
+    onComplete(result) {
+      const persisted = persistState(result, source);
+      proxyFlowActive = false;
+      if (responded) return;
+      responded = true;
+      res.json({
+        message: 'Login flow finished. State was persisted successfully.',
+        state: sanitizeState(persisted)
+      });
+    },
+    onError(error) {
+      proxyFlowActive = false;
+      console.error('Alexa login flow failed:', error.message);
+      if (responded) return;
+      responded = true;
+      res.status(500).json({ error: error.message });
+    }
+  });
+}
+
 app.post('/api/login/start', requireAuth, async (req, res) => {
   try {
+    await stopProxyFlowIfActive();
     const state = loadState();
-    const options = {
-      ...buildBaseOptions(),
-      proxyOnly: true,
-      formerRegistrationData: state || undefined,
-      ...(req.body?.proxyOwnIp ? { proxyOwnIp: req.body.proxyOwnIp } : {})
-    };
-
-    const result = await generateAlexaCookie(options);
-    const persisted = persistState(result, 'login:start');
-    res.json({
-      message: 'Login flow finished. If Amazon login was required, the proxy callback already persisted the state.',
-      state: sanitizeState(persisted)
-    });
+    beginLoginFlow(
+      res,
+      {
+        ...buildBaseOptions(),
+        proxyOnly: true,
+        formerRegistrationData: state || undefined,
+        ...(req.body?.proxyOwnIp ? { proxyOwnIp: req.body.proxyOwnIp } : {})
+      },
+      'login:start'
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -178,18 +225,16 @@ app.post('/api/login/start', requireAuth, async (req, res) => {
 
 app.get('/api/login/url', requireAuth, async (req, res) => {
   try {
-    const options = {
-      ...buildBaseOptions(),
-      proxyOnly: true,
-      formerRegistrationData: loadState() || undefined
-    };
-    const result = await generateAlexaCookie(options);
-    const persisted = persistState(result, 'login:url');
-    res.json({
-      message: 'Use the configured proxy URL to complete Amazon login if needed.',
-      proxyUrl: `http://${config.proxyOwnIp || 'HOSTNAME_MISSING'}:${config.proxyPort}/`,
-      state: sanitizeState(persisted)
-    });
+    await stopProxyFlowIfActive();
+    beginLoginFlow(
+      res,
+      {
+        ...buildBaseOptions(),
+        proxyOnly: true,
+        formerRegistrationData: loadState() || undefined
+      },
+      'login:url'
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

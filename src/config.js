@@ -30,7 +30,7 @@ module.exports = {
   acceptLanguage: process.env.ACCEPT_LANGUAGE || 'de-DE',
   proxyOwnIp: process.env.PROXY_OWN_IP || '',
   proxyListenBind: process.env.PROXY_LISTEN_BIND || '0.0.0.0',
-  proxyPort: envInt('PROXY_PORT', 8090),
+  proxyPort: envInt('PROXY_PORT', 18090),
   proxyOnly: envBool('PROXY_ONLY', true),
   setupProxy: envBool('SETUP_PROXY', true),
   appName: process.env.APP_NAME || 'FHEM EchoDevice Cookie Service',

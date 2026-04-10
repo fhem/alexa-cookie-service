@@ -1,6 +1,6 @@
 # alexa-cookie-service
 
-Eigenständiger Cookie-/Refresh-Service für Amazon Alexa auf Basis von `alexa-cookie`.
+Eigenständiger Cookie-/Refresh-Service für Amazon Alexa auf Basis von `alexa-cookie2`.
 
 Zielbild:
 - `alexa-cookie` läuft nicht mehr direkt im FHEM-Prozess
@@ -48,19 +48,19 @@ docker compose up -d --build
 ### 3. Status prüfen
 
 ```bash
-curl -H "x-auth-token: change-me" http://127.0.0.1:8080/api/status
+curl -H "x-auth-token: change-me" http://127.0.0.1:18080/api/status
 ```
 
 ### 4. Login starten
 
 ```bash
-curl -X POST -H "x-auth-token: change-me" http://127.0.0.1:8080/api/login/start
+curl -X POST -H "x-auth-token: change-me" http://127.0.0.1:18080/api/login/start
 ```
 
 Danach den Proxy im Browser aufrufen:
 
 ```text
-http://<PROXY_OWN_IP>:8090/
+http://<PROXY_OWN_IP>:18090/
 ```
 
 ## Datenhaltung
@@ -85,13 +85,13 @@ Typische Varianten:
 ### Variante A: FHEM spiegelt nur den Cookie lokal
 
 ```bash
-SERVICE_URL=http://127.0.0.1:8080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-cookie.txt ./scripts/fhem_fetch_cookie.sh
+SERVICE_URL=http://127.0.0.1:18080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-cookie.txt ./scripts/fhem_fetch_cookie.sh
 ```
 
 ### Variante B: FHEM spiegelt den kompletten Zustand lokal
 
 ```bash
-SERVICE_URL=http://127.0.0.1:8080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-state.json ./scripts/fhem_dump_cookie_json.sh
+SERVICE_URL=http://127.0.0.1:18080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-state.json ./scripts/fhem_dump_cookie_json.sh
 ```
 
 ## Sicherheitshinweise

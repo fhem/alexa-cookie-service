@@ -1,14 +1,17 @@
 const AlexaCookie = require('alexa-cookie2');
 
-function generateAlexaCookie(options) {
-  return new Promise((resolve, reject) => {
-    AlexaCookie.generateAlexaCookie('', '', options, (error, result) => {
-      if (error) {
-        reject(normalizeError(error));
+function startAlexaCookieFlow(options, handlers = {}) {
+  AlexaCookie.generateAlexaCookie('', '', options, (error, result) => {
+    if (error) {
+      const normalized = normalizeError(error);
+      if (handlers.onProxyReady && isProxyFlowNotice(normalized)) {
+        handlers.onProxyReady(normalized);
         return;
       }
-      resolve(result);
-    });
+      handlers.onError?.(normalized);
+      return;
+    }
+    handlers.onComplete?.(result);
   });
 }
 
@@ -24,6 +27,16 @@ function refreshAlexaCookie(options) {
   });
 }
 
+function stopProxyServer() {
+  return new Promise((resolve) => {
+    AlexaCookie.stopProxyServer(() => resolve());
+  });
+}
+
+function isProxyFlowNotice(error) {
+  return Boolean(error?.message && error.message.startsWith('Please open http://'));
+}
+
 function normalizeError(error) {
   if (!error) return new Error('Unknown alexa-cookie error');
   if (error instanceof Error) return error;
@@ -36,6 +49,7 @@ function normalizeError(error) {
 }
 
 module.exports = {
-  generateAlexaCookie,
-  refreshAlexaCookie
+  startAlexaCookieFlow,
+  refreshAlexaCookie,
+  stopProxyServer
 };
