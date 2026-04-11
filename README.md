@@ -137,40 +137,40 @@ Funktionsfähiges Beispiel für einen gemeinsamen Compose-Stack:
 services:
   fhem:
     image: ghcr.io/fhem/fhem-docker:5-bookworm
-    restart: always
-    ports:
-      - "8083:8083"
     volumes:
       - "./fhem/:/opt/fhem/"
       - "./fhem/cache:/opt/fhem/cache"
-    networks:
-      - fhem_cookie_net
     environment:
       FHEM_UID: 6061
       FHEM_GID: 6061
       TIMEOUT: 10
       RESTART: 1
       TZ: Europe/Berlin
+    ports:
+      - "8083:8083"
+    networks:
+      - fhem_cookie_net
+    restart: always
 
   alexa-cookie-service:
     image: ghcr.io/fhem/alexa-cookie-service:0.2.0
-    restart: unless-stopped
-    user: "6061:6061"
-    env_file:
-      - .env
+    volumes:
+      - ./alexa-cookie-data:/data
+      - ./fhem/cache:/opt/fhem/cache
     environment:
       AUTH_TOKEN: change-me
       COOKIE_EXPORT_FILE: /opt/fhem/cache/alexa-cookie.json
       STATE_FILE: /data/alexa-registration.json
       METADATA_FILE: /data/service-metadata.json
       PROXY_OWN_IP: 192.168.178.10
+    env_file:
+      - .env
     ports:
       - "58090:58090"
-    volumes:
-      - ./alexa-cookie-data:/data
-      - ./fhem/cache:/opt/fhem/cache
     networks:
       - fhem_cookie_net
+    restart: unless-stopped
+    user: "6061:6061"
 
 networks:
   fhem_cookie_net:
