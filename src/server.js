@@ -87,7 +87,7 @@ function buildEchoDeviceCache(state) {
 
 function exportCookieArtifacts(state) {
   const cookie = state?.localCookie || state?.cookie || '';
-  writeJson(config.cookieExportFile, buildEchoDeviceCache(state));
+  writeJson(config.cookieExportFile, buildEchoDeviceCache(state), { compact: true });
   writeJson(config.metadataFile, {
     updatedAt: new Date().toISOString(),
     hasCookie: Boolean(cookie),

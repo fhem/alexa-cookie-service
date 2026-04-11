@@ -86,7 +86,7 @@ Empfehlung:
 ### 2. Starten
 
 ```bash
-docker pull ghcr.io/fhem/alexa-cookie-service:0.2.1
+docker pull ghcr.io/fhem/alexa-cookie-service:0.2.2
 docker compose up -d
 ```
 
@@ -116,6 +116,11 @@ Dieser Zustand ist die Grundlage für spätere Refreshes.
 Zusätzlich exportiert der Service:
 - `COOKIE_EXPORT_FILE` – JSON im von `37_echodevice.pm` erwarteten Schema
 - `METADATA_FILE` – Metadaten zum letzten Update
+
+Wichtig:
+Die Datei `COOKIE_EXPORT_FILE` wird absichtlich kompakt in einer einzelnen Zeile geschrieben,
+weil `37_echodevice.pm` den JSON-Import zeilenbasiert implementiert und mit mehrzeiligem
+Pretty-Print nicht korrekt arbeitet.
 
 Das exportierte JSON hat dieses Schema:
 
@@ -147,7 +152,7 @@ Funktionsfähiges Beispiel für einen gemeinsamen Compose-Stack:
 ```yaml
 services:
   alexa-cookie-service:
-    image: ghcr.io/fhem/alexa-cookie-service:0.2.1
+    image: ghcr.io/fhem/alexa-cookie-service:0.2.2
     volumes:
       - ./alexa-cookie-data:/data
       - ./fhem/cache:/opt/fhem/cache
@@ -194,7 +199,7 @@ In diesem Setup:
 - die aktuelle Cookie-Cachedatei liegt für FHEM direkt unter `./fhem/cache/alexa-cookie.json`
 
 Das Beispiel verwendet `ghcr.io/fhem/fhem-docker:5-bookworm`,
-das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.1`
+das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.2`
 und ein dediziertes Docker-Netz.
 
 Wichtig:

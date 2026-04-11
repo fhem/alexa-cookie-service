@@ -14,9 +14,11 @@ function readJson(filePath, fallback = null) {
   }
 }
 
-function writeJson(filePath, value) {
+function writeJson(filePath, value, options = {}) {
+  const { compact = false } = options;
   ensureDirForFile(filePath);
-  fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
+  const indent = compact ? undefined : 2;
+  fs.writeFileSync(filePath, JSON.stringify(value, null, indent), 'utf8');
 }
 
 function writeText(filePath, value) {
