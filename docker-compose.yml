@@ -1,6 +1,6 @@
 services:
   alexa-cookie-service:
-    build: .
+    image: ghcr.io/fhem/alexa-cookie-service:0.2.0
     container_name: alexa-cookie-service
     restart: unless-stopped
     env_file:

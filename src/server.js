@@ -3,7 +3,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const fs = require('fs');
 const config = require('./config');
-const { readJson, writeJson, writeText, ensureDirForFile } = require('./store');
+const { readJson, writeJson, ensureDirForFile } = require('./store');
 const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
 
 ensureDirForFile(config.stateFile);
@@ -66,9 +66,28 @@ function sanitizeState(state) {
   return clone;
 }
 
+function stripServiceMetadata(state) {
+  if (!state || typeof state !== 'object') return {};
+  const clone = JSON.parse(JSON.stringify(state));
+  delete clone.serviceUpdatedAt;
+  delete clone.serviceSource;
+  return clone;
+}
+
+function buildEchoDeviceCache(state) {
+  if (!state) return null;
+  return {
+    localCookie: state.localCookie || state.cookie || '',
+    csrf: state.csrf || '',
+    refreshToken: state.refreshToken || '',
+    macDms: state.macDms || '',
+    formerRegistrationData: stripServiceMetadata(state.formerRegistrationData || state)
+  };
+}
+
 function exportCookieArtifacts(state) {
   const cookie = state?.localCookie || state?.cookie || '';
-  writeText(config.cookieExportFile, cookie);
+  writeJson(config.cookieExportFile, buildEchoDeviceCache(state));
   writeJson(config.metadataFile, {
     updatedAt: new Date().toISOString(),
     hasCookie: Boolean(cookie),
@@ -257,9 +276,7 @@ app.get('/api/cookie', requireAuth, (req, res) => {
     return;
   }
   res.json({
-    cookie: state.localCookie || state.cookie || '',
-    csrf: state.csrf || '',
-    refreshToken: state.refreshToken || '',
+    ...buildEchoDeviceCache(state),
     serviceUpdatedAt: state.serviceUpdatedAt || null
   });
 });

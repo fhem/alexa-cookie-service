@@ -1,12 +1,11 @@
 # alexa-cookie-service
 
-Eigenständiger Cookie-/Refresh-Service für Amazon Alexa auf Basis von `alexa-cookie2`.
+REST-Service für Amazon-Alexa-Cookies auf Basis von `alexa-cookie2`.
 
-Zielbild:
-- `alexa-cookie` läuft nicht mehr direkt im FHEM-Prozess
-- Cookie- und Refresh-Daten liegen persistent in `/data`
-- FHEM oder andere Systeme können den Zustand per REST abrufen
-- der Service kann den Cookie zyklisch erneuern
+Der Service stellt einen browsergestützten Login-/Proxy-Flow bereit,
+speichert den kompletten Registrierungszustand persistent unter `/data`,
+exportiert eine zu `37_echodevice.pm` kompatible JSON-Cachedatei
+und kann bestehende Cookies zyklisch oder per API refreshen.
 
 ## Enthaltene Komponenten
 
@@ -23,8 +22,9 @@ Zielbild:
 - `GET /api/state` – gespeicherter Zustand, standardmäßig maskiert
 - `GET /api/state?raw=1` – kompletter gespeicherter Zustand
 - `POST /api/login/start` – startet den Login-/Proxy-Flow
+- `GET /api/login/url` – startet den Login-/Proxy-Flow und liefert die Proxy-URL
 - `POST /api/refresh` – Refresh mit `formerRegistrationData`
-- `GET /api/cookie` – Cookie, CSRF und Refresh-Token als JSON
+- `GET /api/cookie` – JSON-Cachedatei im `echodevice`-Schema
 - `GET /api/cookie.txt` – nur der Cookie als Text
 
 ## Schnellstart
@@ -55,7 +55,7 @@ Wichtig:
 | `DATA_DIR` | Optional | `/data` | Basisverzeichnis fuer persistente Servicedaten |
 | `STATE_FILE` | Optional | `${DATA_DIR}/alexa-registration.json` | Persistierter Alexa-Registrierungszustand |
 | `METADATA_FILE` | Optional | `${DATA_DIR}/service-metadata.json` | Metadaten zur letzten Aktualisierung |
-| `COOKIE_EXPORT_FILE` | Optional | `${DATA_DIR}/cookie.txt` | Zieldatei fuer den exportierten Cookie |
+| `COOKIE_EXPORT_FILE` | Optional | `${DATA_DIR}/cookie.json` | Zieldatei fuer die von `37_echodevice.pm` erwartete Cookie-Cachedatei |
 | `DEBUG_HTML_DIR` | Optional | `${DATA_DIR}/debug-html` | Ablageort fuer Debug-Artefakte aus dem Login-Flow |
 | `AMAZON_PAGE` | Optional | `amazon.de` | Ziel-Region fuer den Amazon-Login |
 | `BASE_AMAZON_PAGE` | Optional | Wert von `AMAZON_PAGE` | Basis-Domain fuer den Login-Flow |
@@ -75,7 +75,8 @@ Wichtig:
 ### 2. Starten
 
 ```bash
-docker compose up -d --build
+docker pull ghcr.io/fhem/alexa-cookie-service:0.2.0
+docker compose up -d
 ```
 
 ### 3. Status prüfen
@@ -98,22 +99,37 @@ http://<PROXY_OWN_IP>:58090/
 
 ## Datenhaltung
 
-Der komplette Persistenzzustand wird unter `STATE_FILE` gespeichert. Dieser Zustand muss erhalten bleiben, damit spätere Refreshes stabil funktionieren.
+Der komplette Persistenzzustand wird unter `STATE_FILE` gespeichert.
+Dieser Zustand ist die Grundlage für spätere Refreshes.
 
 Zusätzlich exportiert der Service:
-- `COOKIE_EXPORT_FILE` – nur der Cookie-String
+- `COOKIE_EXPORT_FILE` – JSON im von `37_echodevice.pm` erwarteten Schema
 - `METADATA_FILE` – Metadaten zum letzten Update
+
+Das exportierte JSON hat dieses Schema:
+
+```json
+{
+  "localCookie": "...",
+  "csrf": "...",
+  "refreshToken": "...",
+  "macDms": "...",
+  "formerRegistrationData": { "...": "..." }
+}
+```
 
 ## FHEM-Anbindung
 
-Das Projekt enthält nur generische FHEM-Helfer, weil `echodevice` installationsabhängig ist.
+Das Repository enthält generische FHEM-Helfer.
+Die konkrete Einbindung von `37_echodevice.pm` bleibt installationsabhängig.
 
 ### Docker-Stack mit FHEM erweitern
 
-Am saubersten läuft der Service im selben Docker-Stack wie FHEM.
-Dabei teilen sich beide Container nur ein dediziertes Cache-Verzeichnis, in das der Service den Cookie direkt schreibt.
-FHEM muss den Cookie dann nicht mehr per `curl` herunterladen, sondern kann die Datei unmittelbar verwenden.
-Wichtig ist dabei, den Cookie-Service mit derselben UID/GID wie FHEM laufen zu lassen, damit Besitzrechte und Schreibzugriffe konsistent bleiben.
+Ein typisches Setup ist ein gemeinsamer Docker-Stack mit FHEM.
+Dabei teilen sich beide Container ein dediziertes Cache-Verzeichnis,
+in das der Service die JSON-Cachedatei direkt schreibt.
+Wenn der Cookie-Service mit derselben UID/GID wie FHEM läuft,
+bleiben Besitzrechte und Schreibzugriffe konsistent.
 
 Funktionsfähiges Beispiel für einen gemeinsamen Compose-Stack:
 
@@ -137,14 +153,14 @@ services:
       TZ: Europe/Berlin
 
   alexa-cookie-service:
-    build: .
+    image: ghcr.io/fhem/alexa-cookie-service:0.2.0
     restart: unless-stopped
     user: "6061:6061"
     env_file:
       - .env
     environment:
       AUTH_TOKEN: change-me
-      COOKIE_EXPORT_FILE: /opt/fhem/cache/alexa-cookie.txt
+      COOKIE_EXPORT_FILE: /opt/fhem/cache/alexa-cookie.json
       STATE_FILE: /data/alexa-registration.json
       METADATA_FILE: /data/service-metadata.json
       PROXY_OWN_IP: 192.168.178.10
@@ -161,18 +177,30 @@ networks:
     driver: bridge
 ```
 
-Wirkung dieses Setups:
+In diesem Setup:
 - FHEM erreicht die API intern unter `http://alexa-cookie-service:58080`
 - der Login-Proxy bleibt über `http://<PROXY_OWN_IP>:58090/` vom Browser erreichbar
-- der aktuelle Cookie liegt für FHEM direkt unter `./fhem/cache/alexa-cookie.txt`
+- die aktuelle Cookie-Cachedatei liegt für FHEM direkt unter `./fhem/cache/alexa-cookie.json`
 
-Dieses Beispiel orientiert sich an den Empfehlungen aus `fhem/fhem-docker`: GHCR statt Docker Hub als bevorzugte Quelle, ein fester Tag (`5-bookworm`) statt `latest` und das komplette FHEM-Verzeichnis als persistentes Volume nach `/opt/fhem/`. Das Netzwerk ist bewusst dediziert benannt, damit der Cookie-Service nicht als allgemeiner Infrastruktur-Baustein für andere Container erscheint.
+Das Beispiel verwendet `ghcr.io/fhem/fhem-docker:5-bookworm`,
+das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.0`
+und ein dediziertes Docker-Netz.
 
-Wichtig: `PROXY_OWN_IP` ist in diesem Szenario die IP-Adresse oder der DNS-Name des Docker-Hosts, also des Rechners, auf dem die Container laufen. Gemeint ist nicht der Containername `alexa-cookie-service` und auch nicht die interne Docker-IP, weil der Login-Proxy vom Browser außerhalb des Docker-Netzes erreichbar sein muss.
+Wichtig:
+`PROXY_OWN_IP` ist in diesem Szenario die IP-Adresse oder der DNS-Name des Docker-Hosts,
+also des Rechners, auf dem die Container laufen.
+Gemeint ist nicht der Containername `alexa-cookie-service`
+und auch nicht die interne Docker-IP,
+weil der Login-Proxy vom Browser außerhalb des Docker-Netzes erreichbar sein muss.
 
-Wichtig für Dateirechte: Der Cookie-Service läuft hier mit `user: "6061:6061"` und damit passend zu `FHEM_UID`/`FHEM_GID`. So werden neu geschriebene Dateien in `./fhem/cache` mit kompatiblen Besitzrechten angelegt, statt als `root`.
+Wichtig für Dateirechte:
+Der Cookie-Service läuft hier mit `user: "6061:6061"`
+und damit passend zu `FHEM_UID`/`FHEM_GID`.
+So werden neu geschriebene Dateien in `./fhem/cache`
+mit kompatiblen Besitzrechten angelegt,
+statt als `root`.
 
-Wenn `37_echodevice.pm` im FHEM-Container läuft, sollte es daher auf `/opt/fhem/cache/alexa-cookie.txt` zeigen.
+Wenn `37_echodevice.pm` im FHEM-Container läuft, sollte es daher auf `/opt/fhem/cache/alexa-cookie.json` zeigen.
 
 Hilfsskripte:
 - `scripts/fhem_fetch_cookie.sh`
@@ -208,10 +236,13 @@ SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache
 
 ## Einbindung in  `37_echodevice.pm`
 
-`37_echodevice.pm` soll den Cookie weiterhin aus einer lokalen Datei lesen; der Service ersetzt nur Erzeugung und Erneuerung. Der praktikable Weg ist daher:
+`37_echodevice.pm` liest die Cookie-Daten aus einer lokalen Datei.
+Der Service erzeugt und erneuert diese Daten.
+FHEM triggert bei Bedarf den Refresh
+und schreibt oder verwendet die exportierte Cachedatei lokal:
 - den `AUTH_TOKEN` aus der `.env` in FHEM hinterlegen
 - aus FHEM `POST /api/refresh` aufrufen
-- danach den aktuellen Cookie nach `/opt/fhem/cache/...` spiegeln
+- danach die aktuelle Cookie-Cachedatei nach `/opt/fhem/cache/...` spiegeln
 - `echodevice` unverändert auf diese lokale Datei zeigen lassen
 
 Wichtig: Es gibt keinen separaten Endpoint, der den API-Key ausgibt. Der Wert ist identisch mit `AUTH_TOKEN` aus der `.env` des Containers/Services.
@@ -224,11 +255,15 @@ Einmalig in FHEM ausführen:
 { setKeyValue('alexa_cookie_service_token','change-me') }
 ```
 
-Voraussetzung dafür ist ein gesetztes `uniqueID` in FHEM. Danach kann der Token in Perl-Blöcken per `getKeyValue(...)` gelesen werden, ohne ihn im Klartext in jedem `define` zu hinterlegen.
+Voraussetzung dafür ist ein gesetztes `uniqueID` in FHEM.
+Danach kann der Token in Perl-Blöcken per `getKeyValue(...)` gelesen werden,
+ohne ihn im Klartext in jedem `define` zu hinterlegen.
 
 ### Funktionsfähiges FHEM-Beispiel ohne HTTPMOD
 
-Das Beispiel ruft den Refresh-Endpunkt auf und spiegelt danach den Cookie in eine lokale Datei, die `37_echodevice.pm` verwenden kann:
+Das Beispiel ruft den Refresh-Endpunkt auf
+und spiegelt danach die JSON-Cachedatei in eine lokale Datei,
+die `37_echodevice.pm` direkt verwenden kann:
 
 ```perl
 define AlexaCookieRefresh at +*06:00:00 {
@@ -239,18 +274,21 @@ define AlexaCookieRefresh at +*06:00:00 {
   my $refresh = qx(curl -fsS -X POST -H 'x-auth-token: $token' $base/api/refresh 2>&1);;
   return "refresh failed: $refresh" if $? != 0;;
 
-  my $cookie = qx(curl -fsS -H 'x-auth-token: $token' $base/api/cookie.txt 2>&1);;
-  return "cookie fetch failed: $cookie" if $? != 0;;
+  my $cookie_json = qx(curl -fsS -H 'x-auth-token: $token' $base/api/cookie 2>&1);;
+  return "cookie fetch failed: $cookie_json" if $? != 0;;
 
-  my $file = '/opt/fhem/cache/alexa-cookie-external-cookie.txt';;
-  FileWrite($file, $cookie);;
-  Log 1, "AlexaCookieRefresh wrote cookie to $file";;
+  my $file = '/opt/fhem/cache/alexa-cookie-external.json';;
+  FileWrite($file, $cookie_json);;
+  Log 1, "AlexaCookieRefresh wrote cookie json to $file";;
 }
 ```
 
-`37_echodevice.pm` muss dann auf `/opt/fhem/cache/alexa-cookie-external-cookie.txt` zeigen.
+`37_echodevice.pm` muss dann auf `/opt/fhem/cache/alexa-cookie-external.json` zeigen.
 
-Wenn beide Container wie oben gezeigt denselben Cache teilen, kann das Beispiel noch einfacher werden, weil der Service den Cookie schon selbst nach `/opt/fhem/cache/alexa-cookie.txt` schreibt. Dann reicht in FHEM oft schon der reine Refresh:
+Wenn beide Container wie oben gezeigt denselben Cache teilen,
+kann das Beispiel noch einfacher werden,
+weil der Service die Cachedatei schon selbst nach `/opt/fhem/cache/alexa-cookie.json` schreibt.
+Dann reicht in FHEM oft schon der reine Refresh:
 
 ```perl
 define AlexaCookieRefresh at +*06:00:00 {
@@ -265,11 +303,12 @@ define AlexaCookieRefresh at +*06:00:00 {
 }
 ```
 
-In diesem Fall verwendet `37_echodevice.pm` direkt `/opt/fhem/cache/alexa-cookie.txt`.
+In diesem Fall verwendet `37_echodevice.pm` direkt `/opt/fhem/cache/alexa-cookie.json`.
 
 ### HTTPMOD-Beispiel für Status/Monitoring
 
-Für Monitoring ist `HTTPMOD` sinnvoller als für den eigentlichen Cookie-Download. Beispiel für `/api/status`:
+Für Monitoring ist `HTTPMOD` sinnvoller als für den eigentlichen Cookie-Download.
+Beispiel für `/api/status`:
 
 ```text
 define AlexaCookieStatus HTTPMOD http://127.0.0.1:58080/api/status 300
@@ -281,6 +320,8 @@ attr AlexaCookieStatus reading04JSON hasCookie
 attr AlexaCookieStatus reading05JSON hasRefreshToken
 ```
 
-Wenn der Token nicht im Klartext in den Attributen stehen soll, ist der Refresh-/Fetch-Ablauf über einen Perl-Block oder ein kleines Shell-Skript in FHEM meist einfacher und robuster als `HTTPMOD`.
+Wenn der Token nicht im Klartext in den Attributen stehen soll,
+ist der Refresh-/Fetch-Ablauf über einen Perl-Block
+oder ein kleines Shell-Skript in FHEM meist direkter als `HTTPMOD`.
 
 Ein minimales Shell-Beispiel liegt zusätzlich in `scripts/example_fhem_notify.txt`.
