@@ -58,7 +58,7 @@ Wichtig:
 | `COOKIE_EXPORT_FILE` | Optional | `${DATA_DIR}/cookie.json` | Zieldatei fuer die von `37_echodevice.pm` erwartete Cookie-Cachedatei |
 | `DEBUG_HTML_DIR` | Optional | `${DATA_DIR}/debug-html` | Ablageort fuer Debug-Artefakte aus dem Login-Flow |
 | `AMAZON_PAGE` | Optional | `amazon.de` | Ziel-Region fuer den Amazon-Login |
-| `BASE_AMAZON_PAGE` | Optional | Wert von `AMAZON_PAGE` | Basis-Domain fuer den Login-Flow |
+| `BASE_AMAZON_PAGE` | Optional | `amazon.com` | Basis-Domain fuer den Login-Flow; fuer westliche Regionen in der Regel `amazon.com`, fuer Japan `amazon.co.jp` |
 | `ACCEPT_LANGUAGE` | Optional | `de-DE` | Sprach-Header fuer den Login-Flow |
 | `PROXY_OWN_IP` | Pflicht | leer | Von Browsern erreichbare IP oder DNS-Name des Docker-Hosts fuer den Login-Proxy |
 | `PROXY_LISTEN_BIND` | Optional | `0.0.0.0` | Bind-Adresse des Login-Proxys im Container |
@@ -72,10 +72,21 @@ Wichtig:
 | `REQUEST_TIMEOUT_MS` | Optional | `30000` | Timeout fuer Netzwerkoperationen in Millisekunden |
 | `LOG_LEVEL` | Optional | `combined` | Format/Level fuer HTTP-Request-Logging |
 
+`AMAZON_PAGE` und `BASE_AMAZON_PAGE` haben unterschiedliche Aufgaben:
+
+- `AMAZON_PAGE` ist die eigentliche Ziel-Region fuer das Amazon-Konto, z.B. `amazon.de`.
+- `BASE_AMAZON_PAGE` ist die Basis-Domain des Login-Flows.
+
+Empfehlung:
+
+- Fuer Deutschland und die meisten westlichen Laender `AMAZON_PAGE=amazon.de|amazon.fr|amazon.it|amazon.es|amazon.co.uk` passend zur Region setzen, aber `BASE_AMAZON_PAGE=amazon.com` belassen.
+- Nur fuer Japan `BASE_AMAZON_PAGE=amazon.co.jp` setzen.
+- `BASE_AMAZON_PAGE` nur dann von `amazon.com` abweichend setzen, wenn der Login-Flow mit dem Standardwert nicht funktioniert oder `alexa-cookie2` dies fuer die jeweilige Region verlangt.
+
 ### 2. Starten
 
 ```bash
-docker pull ghcr.io/fhem/alexa-cookie-service:0.2.0
+docker pull ghcr.io/fhem/alexa-cookie-service:0.2.1
 docker compose up -d
 ```
 
@@ -135,25 +146,8 @@ Funktionsfähiges Beispiel für einen gemeinsamen Compose-Stack:
 
 ```yaml
 services:
-  fhem:
-    image: ghcr.io/fhem/fhem-docker:5-bookworm
-    volumes:
-      - "./fhem/:/opt/fhem/"
-      - "./fhem/cache:/opt/fhem/cache"
-    environment:
-      FHEM_UID: 6061
-      FHEM_GID: 6061
-      TIMEOUT: 10
-      RESTART: 1
-      TZ: Europe/Berlin
-    ports:
-      - "8083:8083"
-    networks:
-      - fhem_cookie_net
-    restart: always
-
   alexa-cookie-service:
-    image: ghcr.io/fhem/alexa-cookie-service:0.2.0
+    image: ghcr.io/fhem/alexa-cookie-service:0.2.1
     volumes:
       - ./alexa-cookie-data:/data
       - ./fhem/cache:/opt/fhem/cache
@@ -172,6 +166,23 @@ services:
     restart: unless-stopped
     user: "6061:6061"
 
+  fhem:
+    image: ghcr.io/fhem/fhem-docker:5-bookworm
+    volumes:
+      - "./fhem/:/opt/fhem/"
+      - "./fhem/cache:/opt/fhem/cache"
+    environment:
+      FHEM_UID: 6061
+      FHEM_GID: 6061
+      TIMEOUT: 10
+      RESTART: 1
+      TZ: Europe/Berlin
+    ports:
+      - "8083:8083"
+    networks:
+      - fhem_cookie_net
+    restart: always
+
 networks:
   fhem_cookie_net:
     driver: bridge
@@ -183,7 +194,7 @@ In diesem Setup:
 - die aktuelle Cookie-Cachedatei liegt für FHEM direkt unter `./fhem/cache/alexa-cookie.json`
 
 Das Beispiel verwendet `ghcr.io/fhem/fhem-docker:5-bookworm`,
-das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.0`
+das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.1`
 und ein dediziertes Docker-Netz.
 
 Wichtig:
@@ -263,13 +274,16 @@ ohne ihn im Klartext in jedem `define` zu hinterlegen.
 
 Das Beispiel ruft den Refresh-Endpunkt auf
 und spiegelt danach die JSON-Cachedatei in eine lokale Datei,
-die `37_echodevice.pm` direkt verwenden kann:
+die `37_echodevice.pm` direkt verwenden kann.
+Wenn FHEM und `alexa-cookie-service` in getrennten Containern laufen,
+aber im selben Docker-Netz sind, muss hier der Docker-Service-Name
+statt `127.0.0.1` verwendet werden:
 
 ```perl
 define AlexaCookieRefresh at +*06:00:00 {
   my $token = getKeyValue('alexa_cookie_service_token');;
   return 'missing token' if !$token;;
-  my $base = 'http://127.0.0.1:58080';;
+  my $base = 'http://alexa-cookie-service:58080';;
 
   my $refresh = qx(curl -fsS -X POST -H 'x-auth-token: $token' $base/api/refresh 2>&1);;
   return "refresh failed: $refresh" if $? != 0;;
@@ -305,23 +319,122 @@ define AlexaCookieRefresh at +*06:00:00 {
 
 In diesem Fall verwendet `37_echodevice.pm` direkt `/opt/fhem/cache/alexa-cookie.json`.
 
-### HTTPMOD-Beispiel für Status/Monitoring
+### HTTPMOD-Beispiel fuer Login-Start, Refresh und Status
 
-Für Monitoring ist `HTTPMOD` sinnvoller als für den eigentlichen Cookie-Download.
-Beispiel für `/api/status`:
+`HTTPMOD` kann den Registrierungsprozess direkt anstossen,
+ohne dass `AUTH_TOKEN` im Klartext in den Attributen stehen muss.
+Dafuer wird der Token einmalig per `storeKeyValue` gespeichert
+und vor dem Senden per `replacement...Mode key` in die Header eingesetzt.
+
+#### 1. Token einmalig in HTTPMOD speichern
 
 ```text
-define AlexaCookieStatus HTTPMOD http://127.0.0.1:58080/api/status 300
-attr AlexaCookieStatus requestHeader01 x-auth-token: change-me
-attr AlexaCookieStatus reading01JSON ok
-attr AlexaCookieStatus reading02JSON updatedAt
-attr AlexaCookieStatus reading03JSON ageHours
-attr AlexaCookieStatus reading04JSON hasCookie
-attr AlexaCookieStatus reading05JSON hasRefreshToken
+set AlexaCookie storeKeyValue alexa_cookie_service_token change-me
 ```
 
-Wenn der Token nicht im Klartext in den Attributen stehen soll,
-ist der Refresh-/Fetch-Ablauf über einen Perl-Block
-oder ein kleines Shell-Skript in FHEM meist direkter als `HTTPMOD`.
+#### 2. HTTPMOD-Definition in FHEM anlegen
 
-Ein minimales Shell-Beispiel liegt zusätzlich in `scripts/example_fhem_notify.txt`.
+```text
+define AlexaCookie HTTPMOD http://alexa-cookie-service:58080/api/status 300
+
+attr AlexaCookie replacement01Mode key
+attr AlexaCookie replacement01Regex %%ACS_TOKEN%%
+attr AlexaCookie replacement01Value alexa_cookie_service_token
+
+attr AlexaCookie reading01JSON ok
+attr AlexaCookie reading02JSON updatedAt
+attr AlexaCookie reading03JSON ageHours
+attr AlexaCookie reading04JSON hasCookie
+attr AlexaCookie reading05JSON hasRefreshToken
+attr AlexaCookie reading06JSON proxyUrl
+attr AlexaCookie reading07JSON message
+attr AlexaCookie reading08JSON error
+
+attr AlexaCookie set01Name loginStart
+attr AlexaCookie set01NoArg 1
+attr AlexaCookie set01Method POST
+attr AlexaCookie set01URL http://alexa-cookie-service:58080/api/login/start
+attr AlexaCookie set01Header1 x-auth-token: %%ACS_TOKEN%%
+attr AlexaCookie set01Header2 Content-Type: application/json
+attr AlexaCookie set01Data {}
+attr AlexaCookie set01ParseResponse 1
+
+attr AlexaCookie set02Name refresh
+attr AlexaCookie set02NoArg 1
+attr AlexaCookie set02Method POST
+attr AlexaCookie set02URL http://alexa-cookie-service:58080/api/refresh
+attr AlexaCookie set02Header1 x-auth-token: %%ACS_TOKEN%%
+attr AlexaCookie set02Header2 Content-Type: application/json
+attr AlexaCookie set02Data {}
+attr AlexaCookie set02ParseResponse 1
+
+attr AlexaCookie get01Name loginUrl
+attr AlexaCookie get01URL http://alexa-cookie-service:58080/api/login/url
+attr AlexaCookie get01Header1 x-auth-token: %%ACS_TOKEN%%
+
+attr AlexaCookie showMatched 1
+attr AlexaCookie showError 1
+```
+
+#### 3. Verwendung
+
+Der Login-/Proxy-Flow kann dann direkt aus FHEM gestartet werden:
+
+```text
+set AlexaCookie loginStart
+```
+
+Die Antwort wird nur dann in Readings ausgewertet,
+wenn `set01ParseResponse 1` gesetzt ist.
+Danach stehen insbesondere `proxyUrl`, `message` oder `error` als Readings zur Verfuegung.
+Die URL aus `proxyUrl` muss anschliessend im Browser geoeffnet werden.
+
+Alternativ kann die Proxy-URL explizit per `get` abgefragt werden:
+
+```text
+get AlexaCookie loginUrl
+```
+
+Einen Refresh des bereits gespeicherten Zustands startet:
+
+```text
+set AlexaCookie refresh
+```
+
+#### 3a. Refresh per notify oder at ausloesen
+
+Wenn `37_echodevice.pm` und `alexa-cookie-service` denselben Cache
+unter `/opt/fhem/cache/alexa-cookie.json` verwenden, kann ein `notify`
+direkt den HTTPMOD-Refresh ausloesen:
+
+```perl
+define n_AlexaCookieRefresh notify <DEIN_TRIGGER>:.* {
+  fhem('set AlexaCookie refresh');
+}
+```
+
+Wenn der Refresh nur periodisch laufen soll, ist ein `at`
+meist einfacher als ein `notify`:
+
+```perl
+define at_AlexaCookieRefresh at +*16:00:00 set AlexaCookie refresh
+```
+
+Ein `notify` lohnt sich vor allem dann, wenn der Refresh
+durch ein anderes Event angestossen werden soll,
+z.B. durch ein Dummy, einen Schalter oder einen Fehlerzustand.
+
+#### 4. Hinweise fuer Docker-Setups
+
+Wenn FHEM und `alexa-cookie-service` in Containern im selben Docker-Netz laufen, muss der Service-Name verwendet werden.
+
+```text
+http://alexa-cookie-service:58080
+```
+
+Wichtig:
+- der API-Port des Services ist standardmaessig `58080`
+- der Browser-Login selbst laeuft ueber den Proxy-Port `58090`
+- fuer die Auswertung von `set`-Antworten ist `setXXParseResponse 1` noetig
+
+Ein minimales Shell-Beispiel liegt zusaetzlich in `scripts/example_fhem_notify.txt`.

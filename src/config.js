@@ -26,7 +26,7 @@ module.exports = {
   cookieExportFile: process.env.COOKIE_EXPORT_FILE || path.join(dataDir, 'cookie.txt'),
   debugHtmlDir: process.env.DEBUG_HTML_DIR || path.join(dataDir, 'debug-html'),
   amazonPage: process.env.AMAZON_PAGE || 'amazon.de',
-  baseAmazonPage: process.env.BASE_AMAZON_PAGE || process.env.AMAZON_PAGE || 'amazon.de',
+  baseAmazonPage: process.env.BASE_AMAZON_PAGE || 'amazon.com',
   acceptLanguage: process.env.ACCEPT_LANGUAGE || 'de-DE',
   proxyOwnIp: process.env.PROXY_OWN_IP || '',
   proxyListenBind: process.env.PROXY_LISTEN_BIND || '0.0.0.0',
