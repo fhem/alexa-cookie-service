@@ -21,7 +21,7 @@ function buildBaseOptions() {
     amazonPage: config.amazonPage,
     baseAmazonPage: config.baseAmazonPage,
     acceptLanguage: config.acceptLanguage,
-    proxyOwnIp: config.proxyOwnIp,
+    proxyOwnIp: config.proxyPublicHost,
     proxyListenBind: config.proxyListenBind,
     proxyPort: config.proxyPort,
     proxyOnly: config.proxyOnly,
@@ -115,7 +115,7 @@ function isProxyFlowNotice(error) {
 
 function extractProxyUrl(error) {
   const match = error?.message?.match(/Please open (http:\/\/\S+)\s+with your browser/i);
-  return match ? match[1] : `http://${config.proxyOwnIp || 'HOSTNAME_MISSING'}:${config.proxyPort}/`;
+  return match ? match[1] : `http://${config.proxyPublicHost || 'HOSTNAME_MISSING'}:${config.proxyPort}/`;
 }
 
 function getStatus() {
@@ -233,7 +233,9 @@ app.post('/api/login/start', requireAuth, async (req, res) => {
         ...buildBaseOptions(),
         proxyOnly: true,
         formerRegistrationData: state || undefined,
-        ...(req.body?.proxyOwnIp ? { proxyOwnIp: req.body.proxyOwnIp } : {})
+        ...((req.body?.proxyPublicHost || req.body?.proxyOwnIp)
+          ? { proxyOwnIp: req.body?.proxyPublicHost || req.body?.proxyOwnIp }
+          : {})
       },
       'login:start'
     );
@@ -313,8 +315,8 @@ app.use((req, res) => {
 
 app.listen(config.port, config.host, () => {
   console.log(`alexa-cookie-service listening on ${config.host}:${config.port}`);
-  if (!config.proxyOwnIp) {
-    console.warn('PROXY_OWN_IP is empty. Manual login flows may fail or generate unusable proxy URLs.');
+  if (!config.proxyPublicHost) {
+    console.warn('PROXY_PUBLIC_HOST is empty. Manual login flows may fail or generate unusable proxy URLs.');
   }
   scheduleRefreshLoop();
 });

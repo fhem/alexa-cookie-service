@@ -28,7 +28,7 @@ module.exports = {
   amazonPage: process.env.AMAZON_PAGE || 'amazon.de',
   baseAmazonPage: process.env.BASE_AMAZON_PAGE || 'amazon.com',
   acceptLanguage: process.env.ACCEPT_LANGUAGE || 'de-DE',
-  proxyOwnIp: process.env.PROXY_OWN_IP || '',
+  proxyPublicHost: process.env.PROXY_PUBLIC_HOST || process.env.PROXY_OWN_IP || '',
   proxyListenBind: process.env.PROXY_LISTEN_BIND || '0.0.0.0',
   proxyPort: envInt('PROXY_PORT', 58090),
   proxyOnly: envBool('PROXY_ONLY', true),
