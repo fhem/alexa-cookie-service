@@ -89,7 +89,7 @@ Empfehlung:
 ### 2. Starten
 
 ```bash
-docker pull ghcr.io/fhem/alexa-cookie-service:0.2.3
+docker pull ghcr.io/fhem/alexa-cookie-service:0.2.4
 docker compose up -d
 ```
 
@@ -155,7 +155,7 @@ Funktionsfähiges Beispiel für einen gemeinsamen Compose-Stack:
 ```yaml
 services:
   alexa-cookie-service:
-    image: ghcr.io/fhem/alexa-cookie-service:0.2.2
+    image: ghcr.io/fhem/alexa-cookie-service:0.2.4
     volumes:
       - ./alexa-cookie-data:/data
       - ./fhem/cache:/opt/fhem/cache
@@ -202,7 +202,7 @@ In diesem Setup:
 - die aktuelle Cookie-Cachedatei liegt für FHEM direkt unter `./fhem/cache/alexa-cookie/<NR>result.json`
 
 Das Beispiel verwendet `ghcr.io/fhem/fhem-docker:5-bookworm`,
-das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.2`
+das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.4`
 und ein dediziertes Docker-Netz.
 
 Wichtig:
