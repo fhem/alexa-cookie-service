@@ -161,6 +161,43 @@ curl -H "x-auth-token: change-me" \
   "http://127.0.0.1:58080/api/cookie?save=696result.json"
 ```
 
+## Architektur und Motivation
+
+Der Service ist bewusst als separater Node.js-Container aufgebaut
+und nicht als Erweiterung innerhalb des FHEM-Docker-Containers.
+
+Der Hauptgrund ist die klare Trennung der Laufzeitumgebungen:
+
+- der FHEM-Container ist primaer fuer Perl und eine moeglichst klassische,
+  gut wartbare FHEM-Umgebung gedacht
+- `alexa-cookie2` bringt eine eigene Node.js-Runtime, eigene Abhaengigkeiten
+  und einen eigenen Update-Zyklus mit
+- ein gemeinsames Image wuerde zwei technisch unterschiedliche Aufgabenbereiche
+  vermischen und dadurch Wartung, Debugging und Updates unnoetig verkomplizieren
+
+Seit Version 5 des FHEM-Images ist zudem kein Node Package Manager mehr im
+FHEM-(Perl-)Container enthalten.
+Fuer Node-basierte Helfer musste deshalb bislang meist ein eigenes,
+angepasstes FHEM-Image gebaut werden.
+
+Dieses Projekt verfolgt stattdessen bewusst ein Service-Muster:
+
+```text
+FHEM / echodevice -> HTTP/REST -> alexa-cookie-service -> Amazon
+```
+
+Das bedeutet:
+
+- `37_echodevice.pm` bleibt im normalen FHEM-Container
+- der Node.js-Dienst kapselt Login-, Refresh- und Cookie-Export-Funktionen
+- die Kopplung erfolgt ueber eine klar definierte HTTP-Schnittstelle
+- beide Container koennen getrennt gebaut, aktualisiert, neu gestartet und
+  debuggt werden
+
+Die Trennung ist damit keine unnoetige Zusatzkomplexitaet,
+sondern eine bewusste Designentscheidung zugunsten von Stabilitaet,
+Wartbarkeit und klaren Zustaendigkeiten.
+
 ## FHEM-Anbindung
 
 Das Repository enthält generische FHEM-Helfer.
