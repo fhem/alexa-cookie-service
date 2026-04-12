@@ -155,7 +155,7 @@ Funktionsfähiges Beispiel für einen gemeinsamen Compose-Stack:
 ```yaml
 services:
   alexa-cookie-service:
-    image: ghcr.io/fhem/alexa-cookie-service:0.2.3
+    image: ghcr.io/fhem/alexa-cookie-service:0.2.2
     volumes:
       - ./alexa-cookie-data:/data
       - ./fhem/cache:/opt/fhem/cache
@@ -202,7 +202,7 @@ In diesem Setup:
 - die aktuelle Cookie-Cachedatei liegt für FHEM direkt unter `./fhem/cache/alexa-cookie/<NR>result.json`
 
 Das Beispiel verwendet `ghcr.io/fhem/fhem-docker:5-bookworm`,
-das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.3`
+das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.2.2`
 und ein dediziertes Docker-Netz.
 
 Wichtig:
@@ -371,7 +371,16 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    attr at_AlexaCookieServiceRefresh room Amazon
    ```
 
-8. Ein `notify` anlegen, dessen Regex auf den Namen des `HTTPMOD`
+8. Das Attribut `intervallogin` des `echodevice`-Account-Devices auf einen
+   Wert in Sekunden setzen, der groesser als das Intervall des `at` ist,
+   damit der externe Refresh vorher greift.
+   Beispiel bei `at +*16:00:00`:
+
+   ```text
+   attr AlexaAccount intervallogin 57660
+   ```
+
+9. Ein `notify` anlegen, dessen Regex auf den Namen des `HTTPMOD`
    `AlexaCookieService` verweist und das danach den Import in
    `37_echodevice.pm` anstoesst.
    Beispiel:
@@ -379,6 +388,14 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    ```text
    define n_AlexaAccountCookieImport notify AlexaCookieService:refresh { $main::NPMLoginTyp = 'NPM Login Refresh external';; echodevice_NPMWaitForCookie($defs{$NAME});; }
    attr n_AlexaAccountCookieImport room Amazon
+   ```
+
+10. Nachdem alle beteiligten Devices eingerichtet sind, den Import fuer das
+   Account-Device einmal manuell ausfuehren.
+   Beispiel:
+
+   ```text
+   { $main::NPMLoginTyp = 'NPM Login Refresh external';; echodevice_NPMWaitForCookie($defs{'AlexaAccount'});; }
    ```
 
 Das Zusammenspiel sieht dann so aus:
@@ -525,10 +542,12 @@ Die URL aus `proxyUrl` muss anschliessend im Browser geoeffnet werden.
 Alternativ kann die Proxy-URL explizit per `get` abgefragt werden:
 
 ```text
-get AlexaCookieService loginUrl
+get AlexaCookieService loginStart
 ```
 
-Einen Refresh des bereits gespeicherten Zustands startet:
+Suche im reading message die Adresse, welche im Browser aufgerufen werden muss.
+
+Sobald im Browser steh, das Fenster kann geschlossen werden, einen Refresh des bereits gespeicherten Zustands starten:
 
 ```text
 set AlexaCookieService refresh
@@ -548,12 +567,7 @@ define at_AlexaCookieServiceRefresh at +*16:00:00 set AlexaCookieService refresh
 attr at_AlexaCookieServiceRefresh room Amazon
 ```
 
-Ein `notify` lohnt sich vor allem dann, wenn der Refresh
-durch ein anderes Event angestossen werden soll,
-z.B. durch ein Dummy, einen Schalter oder einen Fehlerzustand.
-
-Dieser Abschnitt zeigt bewusst nur die grundlegende API-Ansteuerung des
-Services aus FHEM. Die eigentliche `echodevice`-Integration entsteht erst
+Die eigentliche `echodevice`-Integration entsteht erst
 dadurch, dass der Service auf `<NR>result.json` schreibt und anschliessend
 ein separates `notify` `echodevice_NPMWaitForCookie()` ausloest.
 
