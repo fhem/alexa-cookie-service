@@ -1,11 +1,13 @@
 services:
   alexa-cookie-service:
-    image: ghcr.io/fhem/alexa-cookie-service:0.2.4
+    image: ghcr.io/fhem/alexa-cookie-service:0.3.0
     container_name: alexa-cookie-service
     volumes:
       - ./data:/data
     env_file:
       - .env
+    environment:
+      COOKIE_EXPORT_DIR: /data/cookie-export
     ports:
       - "58080:58080"
       - "58090:58090"

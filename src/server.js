@@ -2,19 +2,21 @@ const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const fs = require('fs');
+const path = require('path');
 const config = require('./config');
+const logger = require('./logger');
 const { readJson, writeJson, ensureDirForFile } = require('./store');
 const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
 
 ensureDirForFile(config.stateFile);
 ensureDirForFile(config.metadataFile);
-ensureDirForFile(config.cookieExportFile);
+fs.mkdirSync(config.cookieExportDir, { recursive: true });
 fs.mkdirSync(config.debugHtmlDir, { recursive: true });
 
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '1mb' }));
-app.use(morgan(config.logLevel));
+app.use(morgan(config.logLevel, { stream: logger.httpStream }));
 
 function buildBaseOptions() {
   return {
@@ -29,7 +31,7 @@ function buildBaseOptions() {
     deviceAppName: config.appName,
     useHermes: config.useHermes,
     debug: false,
-    logger: (...args) => console.log(...args),
+    logger: (...args) => logger.info(...args),
     callbackEndpoint: '/api/login/callback',
     closeAfterLogin: true,
     proxyRootPath: '/',
@@ -85,9 +87,8 @@ function buildEchoDeviceCache(state) {
   };
 }
 
-function exportCookieArtifacts(state) {
+function writeMetadata(state) {
   const cookie = state?.localCookie || state?.cookie || '';
-  writeJson(config.cookieExportFile, buildEchoDeviceCache(state), { compact: true });
   writeJson(config.metadataFile, {
     updatedAt: new Date().toISOString(),
     hasCookie: Boolean(cookie),
@@ -98,6 +99,32 @@ function exportCookieArtifacts(state) {
   });
 }
 
+function resolveSaveTarget(save) {
+  if (typeof save !== 'string') return null;
+  const trimmed = save.trim();
+  if (!trimmed) return null;
+  return path.join(config.cookieExportDir, path.basename(trimmed));
+}
+
+function getSaveTarget(req) {
+  return resolveSaveTarget(req.query?.save || req.body?.save);
+}
+
+function saveEchoDeviceCache(filePath, state) {
+  writeJson(filePath, buildEchoDeviceCache(state), { compact: true });
+}
+
+function saveEchoDeviceCacheDeferred(filePath, state) {
+  setImmediate(() => {
+    try {
+      saveEchoDeviceCache(filePath, state);
+      logger.info(`Cookie export written to ${filePath}`);
+    } catch (error) {
+      logger.error(`Failed to write cookie export ${filePath}:`, error.message);
+    }
+  });
+}
+
 function persistState(state, source = 'unknown') {
   const enriched = {
     ...state,
@@ -105,7 +132,7 @@ function persistState(state, source = 'unknown') {
     serviceSource: source
   };
   writeJson(config.stateFile, enriched);
-  exportCookieArtifacts(enriched);
+  writeMetadata(enriched);
   return enriched;
 }
 
@@ -150,7 +177,10 @@ async function performRefresh(reason = 'manual') {
     formerRegistrationData: state
   };
 
+  const startedAt = Date.now();
+  logger.info(`Starting refresh (${reason})`);
   const refreshed = await refreshAlexaCookie(options);
+  logger.info(`Refresh finished (${reason}) in ${Date.now() - startedAt} ms`);
   return persistState(refreshed, `refresh:${reason}`);
 }
 
@@ -215,7 +245,7 @@ function beginLoginFlow(res, options, source) {
     },
     onError(error) {
       proxyFlowActive = false;
-      console.error('Alexa login flow failed:', error.message);
+      logger.error('Alexa login flow failed:', error.message);
       if (responded) return;
       responded = true;
       res.status(500).json({ error: error.message });
@@ -223,7 +253,7 @@ function beginLoginFlow(res, options, source) {
   });
 }
 
-app.post('/api/login/start', requireAuth, async (req, res) => {
+async function handleLoginStart(req, res) {
   try {
     await stopProxyFlowIfActive();
     const state = loadState();
@@ -242,9 +272,9 @@ app.post('/api/login/start', requireAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-});
+}
 
-app.get('/api/login/url', requireAuth, async (req, res) => {
+async function handleLoginUrl(req, res) {
   try {
     await stopProxyFlowIfActive();
     beginLoginFlow(
@@ -259,38 +289,73 @@ app.get('/api/login/url', requireAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-});
+}
 
-app.post('/api/refresh', requireAuth, async (req, res) => {
+async function handleCookieRefresh(req, res) {
   try {
+    const requestStartedAt = Date.now();
     const state = await refreshSingleton('api');
-    res.json({ message: 'Refresh successful', state: sanitizeState(state) });
+    const saveTarget = getSaveTarget(req);
+    if (saveTarget) {
+      saveEchoDeviceCacheDeferred(saveTarget, state);
+    }
+    res.json({
+      message: saveTarget
+        ? 'Refresh successful. Cookie export scheduled.'
+        : 'Refresh successful',
+      saveTarget: saveTarget ? path.basename(saveTarget) : null,
+      state: sanitizeState(state)
+    });
+    logger.info(
+      `Refresh request handled in ${Date.now() - requestStartedAt} ms` +
+        (saveTarget ? ` (saveTarget=${path.basename(saveTarget)})` : '')
+    );
   } catch (error) {
     const statusCode = error.code === 'NO_STATE' ? 404 : 500;
     res.status(statusCode).json({ error: error.message });
+    logger.error('Refresh request failed:', error.message);
   }
-});
+}
 
-app.get('/api/cookie', requireAuth, (req, res) => {
+function handleCookieJson(req, res) {
   const state = loadState();
   if (!state) {
     res.status(404).json({ error: 'No persisted state available' });
     return;
   }
-  res.json({
+  const cookiePayload = {
     ...buildEchoDeviceCache(state),
     serviceUpdatedAt: state.serviceUpdatedAt || null
-  });
-});
+  };
+  const saveTarget = getSaveTarget(req);
+  if (saveTarget) {
+    saveEchoDeviceCache(saveTarget, state);
+  }
+  res.json(cookiePayload);
+}
 
-app.get('/api/cookie.txt', requireAuth, (req, res) => {
+function handleCookieText(req, res) {
   const state = loadState();
   if (!state) {
     res.status(404).type('text/plain').send('');
     return;
   }
   res.type('text/plain').send(state.localCookie || state.cookie || '');
-});
+}
+
+app.post('/api/cookie/login/start', requireAuth, handleLoginStart);
+app.post('/api/login/start', requireAuth, handleLoginStart);
+
+app.get('/api/cookie/login/url', requireAuth, handleLoginUrl);
+app.get('/api/login/url', requireAuth, handleLoginUrl);
+
+app.post('/api/cookie/refresh', requireAuth, handleCookieRefresh);
+app.post('/api/refresh', requireAuth, handleCookieRefresh);
+
+app.get('/api/cookie', requireAuth, handleCookieJson);
+
+app.get('/api/cookie/text', requireAuth, handleCookieText);
+app.get('/api/cookie.txt', requireAuth, handleCookieText);
 
 function scheduleRefreshLoop() {
   if (!Number.isFinite(config.refreshScheduleHours) || config.refreshScheduleHours <= 0) return;
@@ -302,9 +367,9 @@ function scheduleRefreshLoop() {
       const ageMs = Date.now() - new Date(current.serviceUpdatedAt).getTime();
       if (ageMs < config.refreshMinAgeHours * 3600000) return;
       await refreshSingleton('scheduled');
-      console.log('Scheduled refresh completed');
+      logger.info('Scheduled refresh completed');
     } catch (error) {
-      console.error('Scheduled refresh failed:', error.message);
+      logger.error('Scheduled refresh failed:', error.message);
     }
   }, intervalMs);
 }
@@ -314,9 +379,10 @@ app.use((req, res) => {
 });
 
 app.listen(config.port, config.host, () => {
-  console.log(`alexa-cookie-service listening on ${config.host}:${config.port}`);
+  logger.info(`alexa-cookie-service listening on ${config.host}:${config.port}`);
   if (!config.proxyPublicHost) {
-    console.warn('PROXY_PUBLIC_HOST is empty. Manual login flows may fail or generate unusable proxy URLs.');
+    logger.warn('PROXY_PUBLIC_HOST is empty. Manual login flows may fail or generate unusable proxy URLs.');
   }
+  logger.info(`Log timestamps use timezone ${config.timeZone}`);
   scheduleRefreshLoop();
 });
