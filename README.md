@@ -282,31 +282,25 @@ Die eigentliche Integration besteht daher aus vier Bausteinen:
    aufruft. Erst dieser Schritt uebergibt die extern erzeugte Datei an
    `37_echodevice.pm`.
 
-Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
+Die `NR` des betroffenen `echodevice` wird inzwischen beim API-Aufruf
+uebergeben. 
+Der Service kann damit Dateiname und Pfad fuer den externen
+Cookie-Import direkt korrekt erzeugen.
+Das Modul erwartet weiterhin:
 
-1. Die `NR` des `echodevice`-Devices in FHEM ermitteln.
-   Beispiel:
+```text
+<fhem_home>/cache/alexa-cookie/<NR>result.json
+```
 
-   ```
-   list AlexaAccount NR
-   ```
+Beispiel fuer `NR = 696` und `fhem_home = /opt/fhem`:
 
-2. Den Dateinamen fuer den externen Cookie-Import auf diese `NR` anpassen.
-   Das Modul erwartet:
-
-   ```text
-   <fhem_home>/cache/alexa-cookie/<NR>result.json
-   ```
-
-   Beispiel fuer `NR = 696` und `fhem_home = /opt/fhem`:
-
-   ```text
-   /opt/fhem/cache/alexa-cookie/696result.json
-   ```
+```text
+/opt/fhem/cache/alexa-cookie/696result.json
+```
 
    Der Dateiname `696result.json` wird spaeter als `save`-Parameter benoetigt.
 
-3. Optional, kann mittels `attr <echodevice> fhem_home` der tatsaechliche Pfad angepasst werden.
+   Optional, kann mittels `attr <echodevice> fhem_home` der tatsaechliche Pfad angepasst werden.
    Beispiel:
 
    ```text
@@ -316,8 +310,8 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    `AlexaAccount` ist dabei nur ein Beispielname und muss durch den Namen
    deines eigenen `echodevice`-Account-Devices ersetzt werden.
 
-4. Erst danach den `alexa-cookie-service`-Container so einrichten, dass
-   `COOKIE_EXPORT_DIR` auf das gemeinsame Exportverzeichnis zeigt.
+1. Den `alexa-cookie-service`-Container so einrichten, dass
+   `COOKIE_EXPORT_DIR` auf das gemeinsame cache Verzeichnis von alexa-cookie zeigt.
    Beispiel:
 
    ```yaml
@@ -328,7 +322,7 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    Das bloße Vorhandensein des Verzeichnisses reicht noch nicht fuer den Import;
    entscheidend ist der passende `save=<filename>`-Aufruf.
 
-5. Um `alexa-cookie-service` aus FHEM heraus steuern zu können, nutzen wir HTTPMOD.
+2. Um `alexa-cookie-service` aus FHEM heraus steuern zu können, nutzen wir HTTPMOD.
    Das steuernde `HTTPMOD` fuer den `alexa-cookie-service` anlegen.
    Im Beispiel heisst es `AlexaCookieService`.
    Beispiel:
@@ -379,10 +373,10 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    attr AlexaCookieService showMatched 1
    attr AlexaCookieService showError 1
    attr AlexaCookieService room Amazon
-
+   attr AlexaCookieService timeout 8
    ```
 
-6. Das AUTH-Shared-Secret und den Exportnamen hinterlegen. 
+3. Das AUTH-Shared-Secret und den Exportnamen hinterlegen. 
    Dafuer muss `set AlexaCookieService storeKeyValue ...`
    verwendet werden.
    An dieser Stelle werden das zuvor per
@@ -395,7 +389,7 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    set AlexaCookieService storeKeyValue alexa_cookie_service_export_name 696result.json
    ```
 
-7. Einen periodischen Trigger anlegen, der den Refresh des Cookies ueber dieses `HTTPMOD`
+4. Einen periodischen Trigger anlegen, der den Refresh des Cookies ueber dieses `HTTPMOD`
    ausloest.
    Beispiel:
 
@@ -404,7 +398,7 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    attr at_AlexaCookieServiceRefresh room Amazon
    ```
 
-8. Das Attribut `intervallogin` des `echodevice`-Account-Devices auf einen
+5. Das Attribut `intervallogin` des `echodevice`-Account-Devices auf einen
    Wert in Sekunden setzen, der groesser als das Intervall des `at` ist,
    damit der externe Refresh vorher greift.
    Beispiel bei `at +*16:00:00`:
@@ -413,7 +407,7 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    attr AlexaAccount intervallogin 57660
    ```
 
-9. Ein `notify` anlegen, dessen Regex auf den Namen des `HTTPMOD`
+6. Ein `notify` anlegen, dessen Regex auf den Namen des `HTTPMOD`
    `AlexaCookieService` verweist und das den Import in
    `37_echodevice.pm` anstoesst.
    Beispiel:
@@ -423,12 +417,19 @@ Die dafuer benoetigten Ableitungen fuer Dateiname und Pfad bleiben:
    attr n_AlexaAccountCookieImport room Amazon
    ```
 
-10. Nachdem alle beteiligten Devices eingerichtet sind, den Import fuer das
+7. Jetzt einmalig den Login starten
+   Dazu per `get AlexaCookieService loginUrl` die Login-URL abrufen und
+   die in der Antwort enthaltene Proxy-URL im Browser oeffnen.
+   Dort den Amazon-Login inklusive eventueller MFA komplett abschliessen,
+   bis der Service die Rueckgabe `Amazon Alexa Cookie successfully retrieved. You can close the browser.` anzeigt.
+   Damit wird die Anmeldung initial eingerichtet.
+
+8. Nachdem alle beteiligten Devices eingerichtet sind, den Import fuer das
    Account-Device einmalig manuell ausfuehren, damit echodevice das Initalcookie akzeptiert.
    Beispiel:
 
    ```text
-   { $main::NPMLoginTyp = 'NPM Login Refresh external';; echodevice_NPMWaitForCookie($defs{'AlexaAccount'});; }
+  set at_AlexaCookieServiceRefresh execNow
    ```
 
 Das Zusammenspiel sieht dann so aus:
@@ -439,11 +440,16 @@ flowchart LR
   NR --> PATH["Zielpfad ableiten: <fhem_home>/cache/alexa-cookie/<NR>result.json"]
   PATH --> ENV["COOKIE_EXPORT_DIR als Exportverzeichnis setzen"]
   ENV --> SVC["alexa-cookie-service"]
-  HTTPMOD["HTTPMOD: AlexaCookieService"] --> SVC
+  HTTPMOD["HTTPMOD: AlexaCookieService"] -->|set refresh -> POST /api/cookie/refresh?save=<NR>result.json| SVC
+  HTTPMOD -->|get exportCookie -> GET /api/cookie?save=<NR>result.json| SVC
   AT["at: AlexaCookieServiceRefresh"] --> HTTPMOD
-  SVC --> FILE["neue Cookie-Datei"]
+  INIT["notify: global:INITIALIZED"] --> TMP1["-temporary at: exportCookie"]
+  INIT --> TMP2["-temporary at: echodevice_NPMWaitForCookie"]
+  TMP1 --> HTTPMOD
+  SVC --> FILE["Cookie-Datei <NR>result.json"]
   FILE --> NOTIFY["notify: AlexaCookieService:refresh"]
   NOTIFY --> IMPORT["echodevice_NPMWaitForCookie fuer AlexaAccount"]
+  TMP2 --> IMPORT
   IMPORT --> ED
 ```
 
@@ -503,6 +509,7 @@ Das echomodul FHEM triggert bei Bedarf den Refresh per REST API und verwendet di
 - danach den aktuellen Cookie mit `GET /api/cookie` abrufen und in `echodevice` verwenden.
 
 
+<!--
 ### Funktionsfähiges FHEM-Beispiel ohne HTTPMOD
 
 Das Beispiel ruft den Refresh-Endpunkt (blockierend) auf
@@ -571,7 +578,7 @@ define AlexaCookieServiceRefresh at +*06:00:00 {
   my $token = getKeyValue('alexa_cookie_service_token');;
   return 'missing token' if !$token;;
   my $base = 'http://alexa-cookie-service:58080';;
-  my $export_name = "${hash->{NR}}result.json";;
+  my $export_name = "${hash}->{NR}result.json";;
   my $refresh_raw = qx(curl -sS -X POST -H "x-auth-token: $token" -w "\\n%{http_code}" "$base/api/cookie/refresh?save=$export_name" 2>&1);;
   return q[refresh failed: empty response] if !defined($refresh_raw) || $refresh_raw eq '';;
   $refresh_raw =~ s/\r//g;;
@@ -640,6 +647,7 @@ schreibt und anschliessend ein separates `notify`
 `echodevice_NPMWaitForCookie()` ausloest.
 
 #### 4. Hinweise fuer Docker-Setups
+-->
 
 Wenn FHEM und `alexa-cookie-service` in Containern im selben Docker-Netz laufen, muss der Service-Name verwendet werden.
 
