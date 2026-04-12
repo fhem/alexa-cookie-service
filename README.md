@@ -407,6 +407,7 @@ Beispiel fuer `NR = 696` und `fhem_home = /opt/fhem`:
    attr AlexaCookieService get01URL http://alexa-cookie-service:58080/api/cookie/login/url
    attr AlexaCookieService get01Header1 x-auth-token: %%ACS_TOKEN%%
 
+   attr AlexaCookieService stateFormat {ReadingsVal($name,"error","") ne "" ? "error: ".ReadingsVal($name,"error","") : !ReadingsVal($name,"ok",0) ? "not initialized" : (ReadingsVal($name,"hasCookie",0) && ReadingsVal($name,"hasRefreshToken",0)) ? "ready, age ".ReadingsVal($name,"ageHours","-")."h" : "login required"}
    attr AlexaCookieService showMatched 1
    attr AlexaCookieService showError 1
    attr AlexaCookieService room Amazon
