@@ -232,7 +232,7 @@ services:
     user: "6061:6061"
 
   fhem:
-    image: ghcr.io/fhem/fhem-docker:5-bookworm
+    image: ghcr.io/fhem/fhem-minimal-docker:5.2.7-bookworm
     volumes:
       - "./fhem/:/opt/fhem/"
       - "./fhem/cache/alexa-cookie:/opt/fhem/cache/alexa-cookie"
@@ -262,7 +262,7 @@ In diesem Setup:
 - das AUTH Token "change-me" sollte durch eine zufällige Zeichenkette ersetzt werden:
 `openssl rand -hex 32` liefert eine solche Zeichenkette.
 
-Das Beispiel verwendet `ghcr.io/fhem/fhem-docker:5-bookworm`,
+Das Beispiel verwendet `ghcr.io/fhem/fhem-minimal-docker:5.2.7-bookworm`,
 das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.3.0`
 und ein dediziertes Docker-Netz.
 
