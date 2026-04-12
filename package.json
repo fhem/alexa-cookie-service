@@ -5,7 +5,7 @@
   "main": "src/server.js",
   "type": "commonjs",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.22.2"
   },
   "scripts": {
     "start": "node src/server.js",
@@ -16,6 +16,6 @@
     "alexa-cookie2": "^5.0.3",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.1"
   }
 }
