@@ -2,13 +2,14 @@ const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const fs = require('fs');
+const path = require('path');
 const config = require('./config');
 const { readJson, writeJson, ensureDirForFile } = require('./store');
 const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
 
 ensureDirForFile(config.stateFile);
 ensureDirForFile(config.metadataFile);
-ensureDirForFile(config.cookieExportFile);
+fs.mkdirSync(config.cookieExportDir, { recursive: true });
 fs.mkdirSync(config.debugHtmlDir, { recursive: true });
 
 const app = express();
@@ -85,9 +86,8 @@ function buildEchoDeviceCache(state) {
   };
 }
 
-function exportCookieArtifacts(state) {
+function writeMetadata(state) {
   const cookie = state?.localCookie || state?.cookie || '';
-  writeJson(config.cookieExportFile, buildEchoDeviceCache(state), { compact: true });
   writeJson(config.metadataFile, {
     updatedAt: new Date().toISOString(),
     hasCookie: Boolean(cookie),
@@ -98,6 +98,21 @@ function exportCookieArtifacts(state) {
   });
 }
 
+function resolveSaveTarget(save) {
+  if (typeof save !== 'string') return null;
+  const trimmed = save.trim();
+  if (!trimmed) return null;
+  return path.join(config.cookieExportDir, path.basename(trimmed));
+}
+
+function getSaveTarget(req) {
+  return resolveSaveTarget(req.query?.save || req.body?.save);
+}
+
+function saveEchoDeviceCache(filePath, state) {
+  writeJson(filePath, buildEchoDeviceCache(state), { compact: true });
+}
+
 function persistState(state, source = 'unknown') {
   const enriched = {
     ...state,
@@ -105,7 +120,7 @@ function persistState(state, source = 'unknown') {
     serviceSource: source
   };
   writeJson(config.stateFile, enriched);
-  exportCookieArtifacts(enriched);
+  writeMetadata(enriched);
   return enriched;
 }
 
@@ -223,7 +238,7 @@ function beginLoginFlow(res, options, source) {
   });
 }
 
-app.post('/api/login/start', requireAuth, async (req, res) => {
+async function handleLoginStart(req, res) {
   try {
     await stopProxyFlowIfActive();
     const state = loadState();
@@ -242,9 +257,9 @@ app.post('/api/login/start', requireAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-});
+}
 
-app.get('/api/login/url', requireAuth, async (req, res) => {
+async function handleLoginUrl(req, res) {
   try {
     await stopProxyFlowIfActive();
     beginLoginFlow(
@@ -259,38 +274,61 @@ app.get('/api/login/url', requireAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-});
+}
 
-app.post('/api/refresh', requireAuth, async (req, res) => {
+async function handleCookieRefresh(req, res) {
   try {
     const state = await refreshSingleton('api');
+    const saveTarget = getSaveTarget(req);
+    if (saveTarget) {
+      saveEchoDeviceCache(saveTarget, state);
+    }
     res.json({ message: 'Refresh successful', state: sanitizeState(state) });
   } catch (error) {
     const statusCode = error.code === 'NO_STATE' ? 404 : 500;
     res.status(statusCode).json({ error: error.message });
   }
-});
+}
 
-app.get('/api/cookie', requireAuth, (req, res) => {
+function handleCookieJson(req, res) {
   const state = loadState();
   if (!state) {
     res.status(404).json({ error: 'No persisted state available' });
     return;
   }
-  res.json({
+  const cookiePayload = {
     ...buildEchoDeviceCache(state),
     serviceUpdatedAt: state.serviceUpdatedAt || null
-  });
-});
+  };
+  const saveTarget = getSaveTarget(req);
+  if (saveTarget) {
+    saveEchoDeviceCache(saveTarget, state);
+  }
+  res.json(cookiePayload);
+}
 
-app.get('/api/cookie.txt', requireAuth, (req, res) => {
+function handleCookieText(req, res) {
   const state = loadState();
   if (!state) {
     res.status(404).type('text/plain').send('');
     return;
   }
   res.type('text/plain').send(state.localCookie || state.cookie || '');
-});
+}
+
+app.post('/api/cookie/login/start', requireAuth, handleLoginStart);
+app.post('/api/login/start', requireAuth, handleLoginStart);
+
+app.get('/api/cookie/login/url', requireAuth, handleLoginUrl);
+app.get('/api/login/url', requireAuth, handleLoginUrl);
+
+app.post('/api/cookie/refresh', requireAuth, handleCookieRefresh);
+app.post('/api/refresh', requireAuth, handleCookieRefresh);
+
+app.get('/api/cookie', requireAuth, handleCookieJson);
+
+app.get('/api/cookie/text', requireAuth, handleCookieText);
+app.get('/api/cookie.txt', requireAuth, handleCookieText);
 
 function scheduleRefreshLoop() {
   if (!Number.isFinite(config.refreshScheduleHours) || config.refreshScheduleHours <= 0) return;

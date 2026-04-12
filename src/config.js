@@ -23,7 +23,7 @@ module.exports = {
   dataDir,
   stateFile: process.env.STATE_FILE || path.join(dataDir, 'alexa-registration.json'),
   metadataFile: process.env.METADATA_FILE || path.join(dataDir, 'service-metadata.json'),
-  cookieExportFile: process.env.COOKIE_EXPORT_FILE || path.join(dataDir, 'cookie.txt'),
+  cookieExportDir: process.env.COOKIE_EXPORT_DIR || process.env.COOKIE_EXPORT_FILE || path.join(dataDir, 'cookie-export'),
   debugHtmlDir: process.env.DEBUG_HTML_DIR || path.join(dataDir, 'debug-html'),
   amazonPage: process.env.AMAZON_PAGE || 'amazon.de',
   baseAmazonPage: process.env.BASE_AMAZON_PAGE || 'amazon.com',
