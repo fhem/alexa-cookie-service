@@ -4,6 +4,7 @@ const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const logger = require('./logger');
 const { readJson, writeJson, ensureDirForFile } = require('./store');
 const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
 
@@ -15,7 +16,7 @@ fs.mkdirSync(config.debugHtmlDir, { recursive: true });
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '1mb' }));
-app.use(morgan(config.logLevel));
+app.use(morgan(config.logLevel, { stream: logger.httpStream }));
 
 function buildBaseOptions() {
   return {
@@ -30,7 +31,7 @@ function buildBaseOptions() {
     deviceAppName: config.appName,
     useHermes: config.useHermes,
     debug: false,
-    logger: (...args) => console.log(...args),
+    logger: (...args) => logger.info(...args),
     callbackEndpoint: '/api/login/callback',
     closeAfterLogin: true,
     proxyRootPath: '/',
@@ -113,6 +114,17 @@ function saveEchoDeviceCache(filePath, state) {
   writeJson(filePath, buildEchoDeviceCache(state), { compact: true });
 }
 
+function saveEchoDeviceCacheDeferred(filePath, state) {
+  setImmediate(() => {
+    try {
+      saveEchoDeviceCache(filePath, state);
+      logger.info(`Cookie export written to ${filePath}`);
+    } catch (error) {
+      logger.error(`Failed to write cookie export ${filePath}:`, error.message);
+    }
+  });
+}
+
 function persistState(state, source = 'unknown') {
   const enriched = {
     ...state,
@@ -165,7 +177,10 @@ async function performRefresh(reason = 'manual') {
     formerRegistrationData: state
   };
 
+  const startedAt = Date.now();
+  logger.info(`Starting refresh (${reason})`);
   const refreshed = await refreshAlexaCookie(options);
+  logger.info(`Refresh finished (${reason}) in ${Date.now() - startedAt} ms`);
   return persistState(refreshed, `refresh:${reason}`);
 }
 
@@ -230,7 +245,7 @@ function beginLoginFlow(res, options, source) {
     },
     onError(error) {
       proxyFlowActive = false;
-      console.error('Alexa login flow failed:', error.message);
+      logger.error('Alexa login flow failed:', error.message);
       if (responded) return;
       responded = true;
       res.status(500).json({ error: error.message });
@@ -278,15 +293,27 @@ async function handleLoginUrl(req, res) {
 
 async function handleCookieRefresh(req, res) {
   try {
+    const requestStartedAt = Date.now();
     const state = await refreshSingleton('api');
     const saveTarget = getSaveTarget(req);
     if (saveTarget) {
-      saveEchoDeviceCache(saveTarget, state);
+      saveEchoDeviceCacheDeferred(saveTarget, state);
     }
-    res.json({ message: 'Refresh successful', state: sanitizeState(state) });
+    res.json({
+      message: saveTarget
+        ? 'Refresh successful. Cookie export scheduled.'
+        : 'Refresh successful',
+      saveTarget: saveTarget ? path.basename(saveTarget) : null,
+      state: sanitizeState(state)
+    });
+    logger.info(
+      `Refresh request handled in ${Date.now() - requestStartedAt} ms` +
+        (saveTarget ? ` (saveTarget=${path.basename(saveTarget)})` : '')
+    );
   } catch (error) {
     const statusCode = error.code === 'NO_STATE' ? 404 : 500;
     res.status(statusCode).json({ error: error.message });
+    logger.error('Refresh request failed:', error.message);
   }
 }
 
@@ -340,9 +367,9 @@ function scheduleRefreshLoop() {
       const ageMs = Date.now() - new Date(current.serviceUpdatedAt).getTime();
       if (ageMs < config.refreshMinAgeHours * 3600000) return;
       await refreshSingleton('scheduled');
-      console.log('Scheduled refresh completed');
+      logger.info('Scheduled refresh completed');
     } catch (error) {
-      console.error('Scheduled refresh failed:', error.message);
+      logger.error('Scheduled refresh failed:', error.message);
     }
   }, intervalMs);
 }
@@ -352,9 +379,10 @@ app.use((req, res) => {
 });
 
 app.listen(config.port, config.host, () => {
-  console.log(`alexa-cookie-service listening on ${config.host}:${config.port}`);
+  logger.info(`alexa-cookie-service listening on ${config.host}:${config.port}`);
   if (!config.proxyPublicHost) {
-    console.warn('PROXY_PUBLIC_HOST is empty. Manual login flows may fail or generate unusable proxy URLs.');
+    logger.warn('PROXY_PUBLIC_HOST is empty. Manual login flows may fail or generate unusable proxy URLs.');
   }
+  logger.info(`Log timestamps use timezone ${config.timeZone}`);
   scheduleRefreshLoop();
 });

@@ -19,6 +19,7 @@ module.exports = {
   host: process.env.HOST || '0.0.0.0',
   port: envInt('PORT', 58080),
   logLevel: process.env.LOG_LEVEL || 'combined',
+  timeZone: process.env.TZ || 'UTC',
   authToken: process.env.AUTH_TOKEN || '',
   dataDir,
   stateFile: process.env.STATE_FILE || path.join(dataDir, 'alexa-registration.json'),
