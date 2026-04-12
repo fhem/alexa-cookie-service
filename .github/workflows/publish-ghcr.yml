@@ -2,9 +2,6 @@ name: Build And Publish Image
 
 on:
   push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
 
 permissions:
@@ -53,8 +50,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ steps.prep.outputs.image }}
           tags: |
-            type=raw,value=${{ steps.prep.outputs.version }}
+            type=raw,value=${{ steps.prep.outputs.version }},enable=${{ github.ref_name == github.event.repository.default_branch }}
             type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch }}
+            type=ref,event=branch
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.prep.outputs.version }}
