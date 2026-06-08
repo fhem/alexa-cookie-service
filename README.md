@@ -89,7 +89,7 @@ Empfehlung:
 ### 2. Starten
 
 ```bash
-docker pull ghcr.io/fhem/alexa-cookie-service:0.3.0
+docker pull ghcr.io/fhem/alexa-cookie-service:0.3.1
 docker compose up -d
 ```
 
@@ -216,7 +216,7 @@ Funktionsfähiges Beispiel für einen gemeinsamen Compose-Stack:
 ```yaml
 services:
   alexa-cookie-service:
-    image: ghcr.io/fhem/alexa-cookie-service:0.3.0
+    image: ghcr.io/fhem/alexa-cookie-service:0.3.1
     volumes:
       - ./alexa-cookie-data:/data
       - ./fhem/cache/alexa-cookie:/opt/fhem/cache/alexa-cookie
@@ -263,7 +263,7 @@ In diesem Setup:
 `openssl rand -hex 32` liefert eine solche Zeichenkette.
 
 Das Beispiel verwendet `ghcr.io/fhem/fhem-minimal-docker:5.2.7-bookworm`,
-das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.3.0`
+das veröffentlichte Image `ghcr.io/fhem/alexa-cookie-service:0.3.1`
 und ein dediziertes Docker-Netz.
 
 Wichtig:
