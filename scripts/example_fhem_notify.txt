@@ -5,6 +5,7 @@ defmod AlexaCookieRefresh at +*06:00:00 {
   my $name = 'EchoWohnzimmer';;
   my $hash = $defs{$name};;
   my $save_name = $hash->{NR} . 'result.json';;
+  setKeyValue('alexa_cookie_service_export_name', $save_name);;
   my $token = 'change-me';;
   my $refresh_raw = qx(curl -sS -X POST -H "x-auth-token: $token" -w "\\n%{http_code}" "http://127.0.0.1:58080/api/cookie/refresh?save=$save_name" 2>&1);;
   return 'refresh failed: empty response' if !defined($refresh_raw) || $refresh_raw eq '';;
