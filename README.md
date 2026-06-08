@@ -319,10 +319,10 @@ Die eigentliche Integration besteht daher aus vier Bausteinen:
    aufruft. Erst dieser Schritt uebergibt die extern erzeugte Datei an
    `37_echodevice.pm`.
 
-Die `NR` des betroffenen `echodevice` wird inzwischen beim API-Aufruf
-uebergeben. 
-Der Service kann damit Dateiname und Pfad fuer den externen
-Cookie-Import direkt korrekt erzeugen.
+Die `NR` des betroffenen `echodevice` muss dynamisch in FHEM ermittelt
+und als `save=<filename>` an den API-Aufruf uebergeben werden.
+Der Dateiname darf nicht dauerhaft als feste Zahl gespeichert werden,
+weil sich die interne FHEM-`NR` nach `rereadcfg` oder Konfigurationsaenderungen verschieben kann.
 Das Modul erwartet weiterhin:
 
 ```text
@@ -376,6 +376,8 @@ Beispiel fuer `NR = 696` und `fhem_home = /opt/fhem`:
    attr AlexaCookieService replacement02Regex %%ACS_EXPORT_NAME%%
    attr AlexaCookieService replacement02Value alexa_cookie_service_export_name
 
+   attr AlexaCookieService requestHeader1 x-auth-token: %%ACS_TOKEN%%
+
    attr AlexaCookieService reading01JSON ok
    attr AlexaCookieService reading02JSON updatedAt
    attr AlexaCookieService reading03JSON ageHours
@@ -407,32 +409,34 @@ Beispiel fuer `NR = 696` und `fhem_home = /opt/fhem`:
    attr AlexaCookieService get01URL http://alexa-cookie-service:58080/api/cookie/login/url
    attr AlexaCookieService get01Header1 x-auth-token: %%ACS_TOKEN%%
 
-   attr AlexaCookieService stateFormat {ReadingsVal($name,"error","") ne "" ? "error: ".ReadingsVal($name,"error","") : !ReadingsVal($name,"ok",0) ? "not initialized" : (ReadingsVal($name,"hasCookie",0) && ReadingsVal($name,"hasRefreshToken",0)) ? "ready, age ".ReadingsVal($name,"ageHours","-")."h" : "login required"}
+   attr AlexaCookieService stateFormat {my $ok = ReadingsVal($name,"ok",0);; my $cookie = ReadingsVal($name,"hasCookie",0);; my $refresh = ReadingsVal($name,"hasRefreshToken",0);; my $age = ReadingsVal($name,"ageHours","-");; my $err = ReadingsVal($name,"error","");; !$ok && $err ne "" ? "error: $err" : !$ok ? "not initialized" : ($cookie && $refresh) ? "ready, age ${age}h" : ($cookie ? "cookie only, age ${age}h" : "login required")}
    attr AlexaCookieService showMatched 1
    attr AlexaCookieService showError 1
    attr AlexaCookieService room Amazon
    attr AlexaCookieService timeout 8
    ```
 
-3. Das AUTH-Shared-Secret und den Exportnamen hinterlegen. 
-   Dafuer muss `set AlexaCookieService storeKeyValue ...`
-   verwendet werden.
-   An dieser Stelle werden das zuvor per
-   `openssl rand -hex 32` erzeugte Secret und der aus der `NR` abgeleitete
-   Exportname anstelle von `change-me` eingesetzt.
-   Beispiel:
+3. Das AUTH-Shared-Secret hinterlegen.
+   Dafuer muss `set AlexaCookieService storeKeyValue ...` verwendet werden.
+   An dieser Stelle wird das zuvor per `openssl rand -hex 32` erzeugte Secret
+   anstelle von `change-me` eingesetzt.
 
    ```text
    set AlexaCookieService storeKeyValue alexa_cookie_service_token change-me
-   set AlexaCookieService storeKeyValue alexa_cookie_service_export_name 696result.json
    ```
+
+   Der Exportname darf nicht dauerhaft als feste Zahl gepflegt werden.
+   Die interne FHEM-`NR` des `echodevice`-Account-Devices kann sich nach
+   `rereadcfg` oder Konfigurationsaenderungen verschieben. Deshalb setzen die
+   folgenden Trigger `alexa_cookie_service_export_name` jeweils unmittelbar
+   vor dem Export aus der aktuellen `NR` von `AlexaAccount`.
 
 4. Einen periodischen Trigger anlegen, der den Refresh des Cookies ueber dieses `HTTPMOD`
    ausloest.
    Beispiel:
 
    ```text
-   define at_AlexaCookieServiceRefresh at +*16:00:00 set AlexaCookieService refresh
+   define at_AlexaCookieServiceRefresh at +*16:00:00 { my $nr = $defs{'AlexaAccount'}{NR};; setKeyValue('alexa_cookie_service_export_name', "${nr}result.json");; fhem('set AlexaCookieService refresh');; }
    attr at_AlexaCookieServiceRefresh room Amazon
    ```
 
@@ -451,23 +455,39 @@ Beispiel fuer `NR = 696` und `fhem_home = /opt/fhem`:
    Beispiel:
 
    ```text
-   define n_AlexaAccountCookieImport notify AlexaCookieService:refresh { $main::NPMLoginTyp = 'NPM Login Refresh external';; echodevice_NPMWaitForCookie($defs{'AlexaAccount'});; }
+   define n_AlexaAccountCookieImport notify AlexaCookieService:refresh { $main::NPMLoginTyp = "NPM Login Refresh external";; echodevice_NPMWaitForCookie($defs{"AlexaAccount"});; }
    attr n_AlexaAccountCookieImport room Amazon
    ```
 
-7. Jetzt einmalig den Login starten
+7. Einen Init-Notify anlegen, der den Exportnamen nach `INITIALIZED` und
+   `REREADCFG` aus der aktuellen `NR` von `AlexaAccount` setzt und danach
+   den Export/Import zeitversetzt anstoesst. Dadurch bleibt die Integration
+   auch nach Konfigurationsaenderungen stabil.
+   Beispiel:
+
+   ```text
+   define n_AlexaCookieServiceInit notify global:(INITIALIZED|REREADCFG) {\
+     my $nr = $defs{"AlexaAccount"}{NR};;\
+     setKeyValue("alexa_cookie_service_export_name", "${nr}result.json");;\
+     fhem("define -temporary at_AlexaCookieExport at +00:00:10 get AlexaCookieService exportCookie");;\
+     fhem(q[define -temporary at_AlexaCookieImport at +00:00:12 { $main::NPMLoginTyp = "NPM Login Refresh external";;;; echodevice_NPMWaitForCookie($defs{"AlexaAccount"});;;; }]);;;;\
+   }
+   attr n_AlexaCookieServiceInit room Amazon
+   ```
+
+8. Jetzt einmalig den Login starten
    Dazu per `get AlexaCookieService loginUrl` die Login-URL abrufen und
    die in der Antwort enthaltene Proxy-URL im Browser oeffnen.
    Dort den Amazon-Login inklusive eventueller MFA komplett abschliessen,
    bis der Service die Rueckgabe `Amazon Alexa Cookie successfully retrieved. You can close the browser.` anzeigt.
    Damit wird die Anmeldung initial eingerichtet.
 
-8. Nachdem alle beteiligten Devices eingerichtet sind, den Import fuer das
-   Account-Device einmalig manuell ausfuehren, damit echodevice das Initalcookie akzeptiert.
+9. Nachdem alle beteiligten Devices eingerichtet sind, den Import fuer das
+   Account-Device einmalig manuell ausfuehren, damit echodevice das Initialcookie akzeptiert.
    Beispiel:
 
    ```text
-  set at_AlexaCookieServiceRefresh execNow
+   set at_AlexaCookieServiceRefresh execNow
    ```
 
 Das Zusammenspiel sieht dann so aus:
