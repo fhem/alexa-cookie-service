@@ -409,6 +409,10 @@ Beispiel fuer `NR = 696` und `fhem_home = /opt/fhem`:
    attr AlexaCookieService get01URL http://alexa-cookie-service:58080/api/cookie/login/url
    attr AlexaCookieService get01Header1 x-auth-token: %%ACS_TOKEN%%
 
+   attr AlexaCookieService get02Name exportCookie
+   attr AlexaCookieService get02URL http://alexa-cookie-service:58080/api/cookie?save=%%ACS_EXPORT_NAME%%
+   attr AlexaCookieService get02Header1 x-auth-token: %%ACS_TOKEN%%
+
    attr AlexaCookieService stateFormat {my $ok = ReadingsVal($name,"ok",0);; my $cookie = ReadingsVal($name,"hasCookie",0);; my $refresh = ReadingsVal($name,"hasRefreshToken",0);; my $age = ReadingsVal($name,"ageHours","-");; my $err = ReadingsVal($name,"error","");; !$ok && $err ne "" ? "error: $err" : !$ok ? "not initialized" : ($cookie && $refresh) ? "ready, age ${age}h" : ($cookie ? "cookie only, age ${age}h" : "login required")}
    attr AlexaCookieService showMatched 1
    attr AlexaCookieService showError 1
