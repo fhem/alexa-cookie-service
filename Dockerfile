@@ -2,6 +2,7 @@ FROM node:22.22.3-bookworm-slim
 
 WORKDIR /app
 COPY package*.json ./
+COPY scripts/patch-alexa-cookie2-refresh.js ./scripts/patch-alexa-cookie2-refresh.js
 RUN npm install --omit=dev
 COPY . .
 RUN mkdir -p /data /data/debug-html
