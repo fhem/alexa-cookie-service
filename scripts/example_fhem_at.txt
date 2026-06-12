@@ -1,0 +1,99 @@
+#############################################################################
+# Refresh Alexa cookie via alexa-cookie-service from a FHEM at
+#############################################################################
+# Die Funktion gehoert z.B. in 99_myUtils.pm.
+#
+# Einmalig in FHEM setzen:
+# { setKeyValue('alexa_cookie_service_token', 'change-me') }
+# Optional, wenn der Service nicht unter dem Docker-Service-Namen erreichbar ist:
+# { setKeyValue('alexa_cookie_service_base', 'http://127.0.0.1:58080') }
+#
+# Beispiel-at:
+# defmod AlexaCookieRefresh at +*06:00:00 { Alexa_CookieRefresh_('AlexaAccount');; }
+
+sub Alexa_CookieRefresh_
+{
+  my ($name) = @_;
+
+  if (!$name)
+  {
+    Log(1, '[Alexa_CookieRefresh] missing device name');
+    return;
+  }
+
+  if (!IsDevice($name, 'echodevice'))
+  {
+    Log(1, qq[[Alexa_CookieRefresh] $name is not an echodevice]);
+    return;
+  }
+
+  my $hash = $defs{$name};
+  if (!$hash)
+  {
+    Log(1, qq[[Alexa_CookieRefresh] unknown device $name]);
+    return;
+  }
+
+  if (!$hash->{NR})
+  {
+    Log(1, qq[[Alexa_CookieRefresh] missing internal FHEM NR for $name]);
+    return;
+  }
+
+  my ($tokenErr, $token) = getKeyValue('alexa_cookie_service_token');
+  if ($tokenErr)
+  {
+    Log(1, qq[[Alexa_CookieRefresh] getKeyValue alexa_cookie_service_token failed: $tokenErr]);
+    return;
+  }
+
+  if (!$token)
+  {
+    Log(1, '[Alexa_CookieRefresh] missing alexa_cookie_service_token');
+    return;
+  }
+
+  my $base = q[http://alexa-cookie-service:58080];
+  my ($baseErr, $storedBase) = getKeyValue('alexa_cookie_service_base');
+  $base = $storedBase if !$baseErr && $storedBase;
+  $base =~ s{/+$}{};
+
+  my $save_name = $hash->{NR} . 'result.json';
+  setKeyValue('alexa_cookie_service_export_name', $save_name);
+
+  my $refresh_raw = qx(curl -sS -X POST -H "x-auth-token: $token" -w "\n%{http_code}" "$base/api/cookie/refresh?save=$save_name" 2>&1);
+
+  if (!defined($refresh_raw) || $refresh_raw eq '')
+  {
+    Log(1, '[Alexa_CookieRefresh] empty response');
+    return;
+  }
+
+  $refresh_raw =~ s/\r//g;
+
+  my ($body, $code) = $refresh_raw =~ /\A(.*)\n(\d{3})\z/s;
+
+  if (!defined($code))
+  {
+    Log(1, qq[[Alexa_CookieRefresh] cannot parse response: $refresh_raw]);
+    return;
+  }
+
+  if ($code ne '200')
+  {
+    Log(1, qq[[Alexa_CookieRefresh] http=$code body=$body]);
+    return;
+  }
+
+  if ($body eq '')
+  {
+    Log(1, '[Alexa_CookieRefresh] empty body');
+    return;
+  }
+
+  $main::NPMLoginTyp = 'NPM Login Refresh external';
+  echodevice_NPMWaitForCookie($hash);
+
+  Log(3, qq[[Alexa_CookieRefresh] refresh successful for $name]);
+  return;
+}
