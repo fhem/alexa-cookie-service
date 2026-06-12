@@ -1,21 +1,49 @@
-# Beispiel: externen Refresh triggern und den Cookie direkt im Exportverzeichnis speichern
-# Anpassung der URLs/Pfade an deine FHEM-Umgebung ist nötig.
+# Beispiel: externen Refresh triggern und den Cookie direkt im Exportverzeichnis speichern.
+# Die Funktion gehoert z.B. in 99_myUtils.pm.
+#
+# Einmalig in FHEM setzen:
+# { setKeyValue('alexa_account_name', 'EchoWohnzimmer') }
+# { setKeyValue('alexa_cookie_service_token', 'change-me') }
+# Optional, wenn der Service nicht unter dem Docker-Service-Namen erreichbar ist:
+# { setKeyValue('alexa_cookie_service_base', 'http://127.0.0.1:58080') }
 
-defmod AlexaCookieRefresh at +*06:00:00 {
-  my $name = 'EchoWohnzimmer';;
-  my $hash = $defs{$name};;
-  my $save_name = $hash->{NR} . 'result.json';;
-  setKeyValue('alexa_cookie_service_export_name', $save_name);;
-  my $token = 'change-me';;
-  my $refresh_raw = qx(curl -sS -X POST -H "x-auth-token: $token" -w "\\n%{http_code}" "http://127.0.0.1:58080/api/cookie/refresh?save=$save_name" 2>&1);;
-  return 'refresh failed: empty response' if !defined($refresh_raw) || $refresh_raw eq '';;
-  $refresh_raw =~ s/\r//g;;
-  my ($refresh_body, $refresh_code) = $refresh_raw =~ /\A(.*)\n(\d{3})\z/s;;
-  return "refresh failed: could not parse HTTP status from response: $refresh_raw"
-    if !defined($refresh_code);;
-  return "refresh failed: http=$refresh_code body=$refresh_body"
-    if $refresh_code ne '200';;
-  return 'refresh failed: empty body' if $refresh_body eq '';;
-  echodevice_NPMWaitForCookie($hash);;
-  Log 1, "AlexaCookieRefresh executed";;
+sub Alexa_CookieRefresh_ {
+  my ($nameErr, $name) = getKeyValue('alexa_account_name');
+  return qq[getKeyValue alexa_account_name failed: $nameErr] if $nameErr;
+  return q[missing alexa_account_name of type echodevice]
+    if !$name || !IsDevice($name, 'echodevice');
+
+  my $hash = $defs{$name};
+  return qq[missing internal FHEM NR for $name] if !$hash->{NR};
+
+  my ($tokenErr, $token) = getKeyValue('alexa_cookie_service_token');
+  return qq[getKeyValue alexa_cookie_service_token failed: $tokenErr] if $tokenErr;
+  return q[missing alexa_cookie_service_token] if !$token;
+
+  my $base = q[http://alexa-cookie-service:58080];
+  my ($baseErr, $storedBase) = getKeyValue('alexa_cookie_service_base');
+  $base = $storedBase if !$baseErr && $storedBase;
+  $base =~ s{/+$}{};
+
+  my $save_name = $hash->{NR} . 'result.json';
+  setKeyValue('alexa_cookie_service_export_name', $save_name);
+
+  my $refresh_raw = qx(curl -sS -X POST -H "x-auth-token: $token" -w "\n%{http_code}" "$base/api/cookie/refresh?save=$save_name" 2>&1);
+  return q[refresh failed: empty response] if !defined($refresh_raw) || $refresh_raw eq '';
+  $refresh_raw =~ s/\r//g;
+
+  my ($refresh_body, $refresh_code) = $refresh_raw =~ /\A(.*)\n(\d{3})\z/s;
+  return qq[refresh failed: could not parse HTTP status from response: $refresh_raw]
+    if !defined($refresh_code);
+  return qq[refresh failed: http=$refresh_code body=$refresh_body]
+    if $refresh_code ne '200';
+  return q[refresh failed: empty body] if $refresh_body eq '';
+
+  $main::NPMLoginTyp = 'NPM Login Refresh external';
+  echodevice_NPMWaitForCookie($hash);
+  Log(1, qq[Alexa_CookieRefresh_ wrote cookie json to $save_name and triggered echodevice import]);
+
+  return undef;
 }
+
+defmod AlexaCookieRefresh at +*06:00:00 { Alexa_CookieRefresh_();; }
