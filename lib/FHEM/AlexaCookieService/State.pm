@@ -1,3 +1,9 @@
+# $Id$
+#
+# Maintainer: sidey
+# Description: Secret-free state normalization for Alexa cookie service data.
+# More information: https://github.com/fhem/alexa-cookie-service
+
 package FHEM::AlexaCookieService::State;
 
 use strict;

@@ -1,3 +1,9 @@
+# $Id$
+#
+# Maintainer: sidey
+# Description: HTTP request helper for the external Alexa cookie service.
+# More information: https://github.com/fhem/alexa-cookie-service
+
 package FHEM::AlexaCookieService::Client;
 
 use strict;

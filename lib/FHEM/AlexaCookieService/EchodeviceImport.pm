@@ -1,3 +1,9 @@
+# $Id$
+#
+# Maintainer: sidey
+# Description: echodevice import glue for Alexa cookie service exports.
+# More information: https://github.com/fhem/alexa-cookie-service
+
 package FHEM::AlexaCookieService::EchodeviceImport;
 
 use strict;
