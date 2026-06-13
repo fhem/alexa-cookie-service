@@ -11,6 +11,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "healthcheck": "node scripts/healthcheck.js",
+    "test": "prove -Ilib t",
     "postinstall": "node scripts/patch-alexa-cookie2-refresh.js"
   },
   "dependencies": {
