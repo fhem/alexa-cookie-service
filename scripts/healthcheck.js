@@ -12,7 +12,7 @@ const req = http.request(
     timeout: 5000
   },
   (res) => {
-    if (res.statusCode && res.statusCode >= 200 && res.statusCode < 400) {
+    if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
       process.exit(0);
     }
     process.exit(1);

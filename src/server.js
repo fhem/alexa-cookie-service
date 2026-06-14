@@ -203,7 +203,7 @@ async function stopProxyFlowIfActive() {
 
 app.get('/healthz', (req, res) => {
   const status = getStatus();
-  res.status(status.ok ? 200 : 503).json(status);
+  res.status(200).json(status);
 });
 
 app.get('/api/status', requireAuth, (req, res) => {

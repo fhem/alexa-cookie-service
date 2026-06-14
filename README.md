@@ -17,8 +17,8 @@ und kann bestehende Cookies zyklisch oder per API refreshen.
 
 ## Wichtige Endpunkte
 
-- `GET /healthz` – Healthcheck
-- `GET /api/status` – Status ohne Geheimnisse
+- `GET /healthz` – Liveness-Check, liefert immer 200 wenn der Prozess laeuft
+- `GET /api/status` – Status ohne Geheimnisse, fuer Readiness und Login-Zustand
 - `GET /api/state` – gespeicherter Zustand, standardmäßig maskiert
 - `GET /api/state?raw=1` – kompletter gespeicherter Zustand
 - `POST /api/cookie/login/start` – startet den Login-/Proxy-Flow
