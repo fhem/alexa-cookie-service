@@ -1,5 +1,9 @@
 # FHEM::AlexaCookieService Packages
 
+Maintainer: sidey
+
+More information: [fhem/alexa-cookie-service](https://github.com/fhem/alexa-cookie-service)
+
 These Perl packages are the reusable FHEM-side integration layer for
 `alexa-cookie-service`. They implement ADR-0001 option 5 up to the package
 boundary only. There is intentionally no `FHEM/98_AlexaCookieService.pm` module
