@@ -167,7 +167,7 @@ function getStatus() {
 async function performRefresh(reason = 'manual') {
   const state = loadState();
   if (!state) {
-    const error = new Error('No persisted registration state available for the HTTPMOD refresh. In FHEM, run get <your HTTPMOD device> loginUrl or set <your HTTPMOD device> loginStart first, then open the returned proxy URL in your browser and retry refresh.');
+    const error = new Error('Start Login Flow.');
     error.code = 'NO_STATE';
     throw error;
   }
@@ -311,10 +311,11 @@ async function handleCookieRefresh(req, res) {
         (saveTarget ? ` (saveTarget=${path.basename(saveTarget)})` : '')
     );
   } catch (error) {
-    const statusCode = error.code === 'NO_STATE' ? 428 : 500;
+    const statusCode = error.code === 'NO_STATE' ? 200 : 500;
     res.status(statusCode).json({
       error: error.message,
-      action: error.code === 'NO_STATE' ? 'In FHEM, run get <your HTTPMOD device> loginUrl or set <your HTTPMOD device> loginStart first.' : undefined
+      code: error.code || 'REFRESH_FAILED',
+      action: error.code === 'NO_STATE' ? 'Start Login Flow.' : undefined
     });
     logger.error('Refresh request failed:', error.message);
   }
