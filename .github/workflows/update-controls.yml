@@ -28,7 +28,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate FHEM controls file
-        uses: fhem/fhem-controls-actions@v2.3.0
+        uses: fhem/fhem-controls-actions@v3.0.1
         with:
           filename: lib/controls_alexa-cookie-service.txt
           directory: lib/FHEM/AlexaCookieService
