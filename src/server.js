@@ -167,7 +167,7 @@ function getStatus() {
 async function performRefresh(reason = 'manual') {
   const state = loadState();
   if (!state) {
-    const error = new Error('No persisted registration state available');
+    const error = new Error('No persisted registration state available. Start the login flow first with POST /api/cookie/login/start or GET /api/cookie/login/url, then open the returned proxy URL in your browser.');
     error.code = 'NO_STATE';
     throw error;
   }
@@ -311,8 +311,11 @@ async function handleCookieRefresh(req, res) {
         (saveTarget ? ` (saveTarget=${path.basename(saveTarget)})` : '')
     );
   } catch (error) {
-    const statusCode = error.code === 'NO_STATE' ? 404 : 500;
-    res.status(statusCode).json({ error: error.message });
+    const statusCode = error.code === 'NO_STATE' ? 428 : 500;
+    res.status(statusCode).json({
+      error: error.message,
+      action: error.code === 'NO_STATE' ? 'Call POST /api/cookie/login/start or GET /api/cookie/login/url first.' : undefined
+    });
     logger.error('Refresh request failed:', error.message);
   }
 }
