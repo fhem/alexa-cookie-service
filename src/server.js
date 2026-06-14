@@ -7,6 +7,7 @@ const config = require('./config');
 const logger = require('./logger');
 const { readJson, writeJson, ensureDirForFile } = require('./store');
 const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
+const { buildLoginFlowResponse } = require('./login-flow');
 
 ensureDirForFile(config.stateFile);
 ensureDirForFile(config.metadataFile);
@@ -167,7 +168,7 @@ function getStatus() {
 async function performRefresh(reason = 'manual') {
   const state = loadState();
   if (!state) {
-    const error = new Error('No persisted registration state available');
+    const error = new Error('Start Login Flow.');
     error.code = 'NO_STATE';
     throw error;
   }
@@ -203,7 +204,7 @@ async function stopProxyFlowIfActive() {
 
 app.get('/healthz', (req, res) => {
   const status = getStatus();
-  res.status(status.ok ? 200 : 503).json(status);
+  res.status(200).json(status);
 });
 
 app.get('/api/status', requireAuth, (req, res) => {
@@ -228,27 +229,35 @@ function beginLoginFlow(res, options, source) {
       proxyFlowActive = true;
       if (responded) return;
       responded = true;
-      res.status(202).json({
+      res.status(202).json(buildLoginFlowResponse({
         message: error.message,
         proxyUrl: extractProxyUrl(error)
-      });
+      }));
     },
     onComplete(result) {
       const persisted = persistState(result, source);
-      proxyFlowActive = false;
-      if (responded) return;
-      responded = true;
-      res.json({
-        message: 'Login flow finished. State was persisted successfully.',
-        state: sanitizeState(persisted)
+      stopProxyFlowIfActive().catch((stopError) => {
+        logger.error('Failed to stop proxy server after login:', stopError.message);
+      }).finally(() => {
+        proxyFlowActive = false;
+        if (responded) return;
+        responded = true;
+        res.json(buildLoginFlowResponse({
+          message: 'Login flow finished. State was persisted successfully.',
+          state: sanitizeState(persisted)
+        }));
       });
     },
     onError(error) {
-      proxyFlowActive = false;
-      logger.error('Alexa login flow failed:', error.message);
-      if (responded) return;
-      responded = true;
-      res.status(500).json({ error: error.message });
+      stopProxyFlowIfActive().catch((stopError) => {
+        logger.error('Failed to stop proxy server after login error:', stopError.message);
+      }).finally(() => {
+        proxyFlowActive = false;
+        logger.error('Alexa login flow failed:', error.message);
+        if (responded) return;
+        responded = true;
+        res.status(500).json({ error: error.message });
+      });
     }
   });
 }
@@ -300,9 +309,7 @@ async function handleCookieRefresh(req, res) {
       saveEchoDeviceCacheDeferred(saveTarget, state);
     }
     res.json({
-      message: saveTarget
-        ? 'Refresh successful. Cookie export scheduled.'
-        : 'Refresh successful',
+      message: '',
       saveTarget: saveTarget ? path.basename(saveTarget) : null,
       state: sanitizeState(state)
     });
@@ -311,8 +318,12 @@ async function handleCookieRefresh(req, res) {
         (saveTarget ? ` (saveTarget=${path.basename(saveTarget)})` : '')
     );
   } catch (error) {
-    const statusCode = error.code === 'NO_STATE' ? 404 : 500;
-    res.status(statusCode).json({ error: error.message });
+    const statusCode = error.code === 'NO_STATE' ? 200 : 500;
+    res.status(statusCode).json({
+      error: error.message,
+      code: error.code || 'REFRESH_FAILED',
+      action: error.code === 'NO_STATE' ? 'Start Login Flow.' : undefined
+    });
     logger.error('Refresh request failed:', error.message);
   }
 }
