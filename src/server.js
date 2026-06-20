@@ -237,6 +237,7 @@ app.get('/healthz', (req, res) => {
 });
 
 app.get('/api/status', requireAuth, handleStatus);
+app.post('/api/status', requireAuth, handleStatus);
 
 app.get('/api/state', requireAuth, (req, res) => {
   const raw = req.query.raw === '1';
