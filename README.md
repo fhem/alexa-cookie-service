@@ -58,7 +58,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    Das fertige Beispiel liegt in [scripts/example_fhem_httpmod_package.cfg](./scripts/example_fhem_httpmod_package.cfg).
 
    Für den empfohlenen Pfad brauchst du:
-   - den Status-Endpunkt `http://alexa-cookie-service:58080/api/status`
+   - den Status-Endpunkt `http://alexa-cookie-service:58080/api/status`, der bei veraltetem Zustand vor der Antwort automatisch einen Refresh ausloest
    - `get exportCookie` auf `/api/cookie`
    - `set refresh` auf `/api/cookie/refresh`
    - eine lokale FHEM-Callback-Funktion, die den JSON-Body mit `write_cookie_export_and_trigger_import` in das lokale Exportverzeichnis schreibt
@@ -95,7 +95,8 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 
 5. HTTPMOD starten.
 
-   Wenn der Login erfolgreich abgeschlossen ist, kann `set AlexaCookieService refresh` den Servicezustand aktualisieren.
+   Der periodische `GET /api/status`-Aufruf aktualisiert den Servicezustand automatisch, sobald die letzte Aktualisierung aelter als die konfigurierte Mindestgrenze ist.
+   `set AlexaCookieService refresh` bleibt als manueller Fallback erhalten, ist fuer den normalen Polling-Betrieb aber nicht mehr noetig.
    Der anschließende `get exportCookie`-Aufruf liefert das Cookie-JSON, das die lokale FHEM-Hilfsfunktion in die Datei schreibt und danach in `echodevice` importiert.
 
 ## Enthaltene Komponenten
@@ -265,9 +266,9 @@ SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache
 
 Für getrennte Hosts oder Deployments ohne Shared Volume ist der empfohlene Ablauf:
 
-1. `POST /api/cookie/refresh` aus FHEM aufrufen, um den Servicezustand zu aktualisieren.
+1. `GET /api/status` aus FHEM aufrufen, damit der Servicezustand bei Bedarf automatisch per Refresh aktualisiert wird.
 2. `GET /api/cookie` abrufen.
 3. Die Response lokal in die von `echodevice` erwartete Datei schreiben.
 4. `echodevice_NPMWaitForCookie($hash)` aus dem FHEM-seitigen Code triggern.
 
-`save=<filename>` bleibt als Legacy-Option erhalten, ist aber nicht der empfohlene Standardpfad.
+`POST /api/cookie/refresh` und `save=<filename>` bleiben als manuelle Legacy-/Fallback-Optionen erhalten, sind aber nicht der empfohlene Standardpfad.

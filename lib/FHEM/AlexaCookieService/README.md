@@ -24,7 +24,7 @@ JSON responses.
 
 Supported request builders:
 
-- `status_request` -> `GET /api/status`
+- `status_request` -> `GET /api/status` (the service may auto-refresh stale state before responding)
 - `login_url_request` -> `GET /api/cookie/login/url`
 - `login_start_request` -> `POST /api/cookie/login/start`
 - `refresh_request` -> `POST /api/cookie/refresh` (`save` only for legacy compatibility)
@@ -128,10 +128,11 @@ The intended flow for an external refresh is:
 
 1. Resolve the target `echodevice` hash.
 2. Derive the dynamic export filename with `export_name_for_hash`.
-3. Fetch the export JSON with `GET /api/cookie` through `Client.pm`.
-4. Write the JSON body to the local export file named by step 2.
-5. After the local write succeeds, call `trigger_import`.
-6. Let the caller update readings using `State.pm`.
+3. Poll `GET /api/status` through `Client.pm` so stale service state is refreshed automatically before the response is returned.
+4. Fetch the export JSON with `GET /api/cookie` through `Client.pm`.
+5. Write the JSON body to the local export file named by step 2.
+6. After the local write succeeds, call `trigger_import`.
+7. Let the caller update readings using `State.pm`.
 
 The package layer deliberately does not define devices, attributes, timers,
 readings or commandref documentation. Those belong into a future FHEM module.
