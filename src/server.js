@@ -8,11 +8,12 @@ const logger = require('./logger');
 const { readJson, writeJson, ensureDirForFile } = require('./store');
 const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
 const { buildLoginFlowResponse } = require('./login-flow');
+const { ensureDir } = require('./fs-utils');
 
 ensureDirForFile(config.stateFile);
 ensureDirForFile(config.metadataFile);
-fs.mkdirSync(config.cookieExportDir, { recursive: true });
-fs.mkdirSync(config.debugHtmlDir, { recursive: true });
+ensureDir(config.cookieExportDir, { mkdirSync: fs.mkdirSync, logger, label: 'cookie export directory' });
+ensureDir(config.debugHtmlDir, { mkdirSync: fs.mkdirSync, logger, label: 'debug HTML directory' });
 
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
