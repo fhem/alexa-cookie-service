@@ -105,7 +105,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 - Dockerfile
 - docker-compose.yml
 - `.env.example`
-- Hilfsskripte für FHEM
+- HTTPMOD-Beispiel und FHEM-Package-Loader
 
 ## Wichtige Endpunkte
 
@@ -170,16 +170,6 @@ Verhalten der Endpunkte:
 - alle JSON-Ausgaben/-Dateien fuer das `echodevice`-Schema sind kompakt und ohne Zeilenumbrueche
 - `save=696result.json` speichert bei `COOKIE_EXPORT_DIR=/opt/fhem/cache/alexa-cookie` nach `/opt/fhem/cache/alexa-cookie/696result.json`
 
-Legacy-Beispiele:
-
-```bash
-curl -X POST -H "x-auth-token: change-me"   "http://127.0.0.1:58080/api/cookie/refresh?save=696result.json"
-```
-
-```bash
-curl -H "x-auth-token: change-me"   "http://127.0.0.1:58080/api/cookie?save=696result.json"
-```
-
 ## Architektur und Motivation
 
 Der Service ist bewusst als separater Node.js-Container aufgebaut
@@ -228,26 +218,8 @@ Die empfohlene Einbindung ruft `GET /api/cookie` per HTTPMOD ab, schreibt die Ex
 
 Ausfuehrliche Hintergruende zur FHEM-Integration, zum Exportnamen, zum lokalen Schreiben und zu den optionalen Triggern stehen in den Abschnitten oben und im Beispiel [scripts/example_fhem_httpmod_package.cfg](./scripts/example_fhem_httpmod_package.cfg).
 
-## Alternaive Zugrifswege
-
-Hilfsskripte:
-- `scripts/fhem_fetch_cookie.sh`
-- `scripts/fhem_dump_cookie_json.sh`
-- `scripts/example_fhem_notify.txt`
-
-Typische Varianten:
-
-### Variante A: FHEM spiegelt nur den Cookie lokal
-
-```bash
-SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-cookie.txt ./scripts/fhem_fetch_cookie.sh
-```
-
-### Variante B: FHEM spiegelt den kompletten Zustand lokal
-
-```bash
-SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-state.json ./scripts/fhem_dump_cookie_json.sh
-```
+Das einzige gepflegte Anwenderbeispiel ist [scripts/example_fhem_httpmod_package.cfg](./scripts/example_fhem_httpmod_package.cfg).
+Andere Beispielpfade wie `at`/`notify`-Fragmente oder Shell-Skripte werden nicht mehr mitgeliefert.
 
 ## Sicherheitshinweise
 

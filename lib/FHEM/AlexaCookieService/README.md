@@ -96,8 +96,15 @@ import path after the caller has written the export locally.
 Useful functions:
 
 - `export_name_for_hash($echodevice_hash)`
+- `export_name_for_device($echodevice_name)`
 - `validate_target($echodevice_hash)`
+- `export_path_for_hash($echodevice_hash, export_dir => $dir)`
+- `write_cookie_export($echodevice_hash, $payload, export_dir => $dir)`
+- `write_cookie_export_for_device($echodevice_name, $payload, export_dir => $dir)`
+- `write_cookie_export_and_trigger_import($echodevice_hash, $payload, export_dir => $dir)`
+- `write_cookie_export_and_trigger_import_for_device($echodevice_name, $payload, export_dir => $dir)`
 - `trigger_import($echodevice_hash, %args)`
+- `trigger_import_for_device($echodevice_name, %args)`
 
 The export filename is always derived from the current FHEM `NR`, for example
 `696result.json`. This avoids relying on stale filenames after `rereadcfg` or
@@ -115,10 +122,12 @@ use FHEM::AlexaCookieService::EchodeviceImport;
 my $error = FHEM::AlexaCookieService::EchodeviceImport::validate_target($echo_hash);
 return $error if $error;
 
-my $save_name = FHEM::AlexaCookieService::EchodeviceImport::export_name_for_hash($echo_hash);
-
-# Fetch the export, write it locally to $save_name, then trigger echodevice import.
-$error = FHEM::AlexaCookieService::EchodeviceImport::trigger_import($echo_hash);
+# Fetch the export JSON into $export_json, write it locally, then trigger import.
+$error = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export_and_trigger_import(
+  $echo_hash,
+  $export_json,
+  export_dir => q[/opt/fhem/cache/alexa-cookie],
+);
 return $error if $error;
 ```
 
@@ -130,8 +139,8 @@ The intended flow for an external refresh is:
 2. Derive the dynamic export filename with `export_name_for_hash`.
 3. Poll `GET /api/status` through `Client.pm` so stale service state is refreshed automatically before the response is returned.
 4. Fetch the export JSON with `GET /api/cookie` through `Client.pm`.
-5. Write the JSON body to the local export file named by step 2.
-6. After the local write succeeds, call `trigger_import`.
+5. Write the JSON body to the local export file and trigger import with `write_cookie_export_and_trigger_import`.
+6. Keep `trigger_import` available for legacy flows where the service already wrote the export file.
 7. Let the caller update readings using `State.pm`.
 
 The package layer deliberately does not define devices, attributes, timers,

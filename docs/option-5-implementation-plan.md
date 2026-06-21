@@ -10,7 +10,8 @@ contains the package stage. No `FHEM/98_AlexaCookieService.pm` is created here.
 - Provide reusable Perl packages for FHEM-side integrations.
 - Allow a future `AlexaCookieService` FHEM device to reuse the same packages.
 - Allow a future `37_echodevice.pm` integration to use the package layer
-  without copying HTTP, status or import logic.
+  without copying HTTP, status or import logic or depending on a shared export
+  directory.
 - Avoid monkey-patching `echodevice` internals.
 
 ## Package Boundaries
@@ -25,8 +26,8 @@ Responsibilities:
   - `GET /api/status`
   - `GET /api/cookie/login/url`
   - `POST /api/cookie/login/start`
-  - `POST /api/cookie/refresh`
-  - `GET /api/cookie`
+  - `POST /api/cookie/refresh` (`save` only for legacy compatibility)
+  - `GET /api/cookie` (`save` only for legacy compatibility)
   - `GET /api/cookie/text`
 - Parse JSON responses with a consistent error shape.
 
@@ -56,7 +57,8 @@ Responsibilities:
 
 - Validate a target `echodevice` hash enough for import.
 - Derive the dynamic export filename from the current FHEM `NR`.
-- Trigger the existing `echodevice_NPMWaitForCookie($hash)` import path.
+- Trigger the existing `echodevice_NPMWaitForCookie($hash)` import path after
+  the caller has written the export file locally.
 
 Non-goals:
 
@@ -67,7 +69,7 @@ Non-goals:
 ## Implementation Sequence
 
 1. Add package skeletons and syntax checks.
-2. Replace the current `99_MyUtils` example logic with package-based examples.
+2. Keep HTTPMOD as the only maintained user-facing example and use packages for reusable FHEM-side logic.
 3. Add focused package tests for URL building, JSON parsing and export-name
    derivation.
 4. Add the optional FHEM device module only after the package API is stable.
@@ -86,3 +88,17 @@ The later module should be a thin UI/device layer only:
 - readings derived from `State.pm`
 
 This later module is intentionally not part of the current change.
+
+## Current Integration Shape
+
+The intended flow for an external refresh is:
+
+1. Resolve the target `echodevice` hash.
+2. Derive the dynamic export filename with `export_name_for_hash`.
+3. Fetch the export JSON with `GET /api/cookie` through `Client.pm`.
+4. Write the JSON body to the local export file named by step 2.
+5. After the local write succeeds, call `trigger_import`.
+6. Let the caller update readings using `State.pm`.
+
+The package layer deliberately does not define devices, attributes, timers,
+readings or commandref documentation. Those belong into a future FHEM module.
