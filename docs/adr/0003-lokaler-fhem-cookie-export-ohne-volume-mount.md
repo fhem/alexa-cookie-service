@@ -48,6 +48,33 @@ in Readings extrahiert oder geloggt werden. Die HTTPMOD-Konfiguration soll nur
 gezielte, unkritische Readings ableiten und den kompletten Body an den lokalen
 Import-Helper uebergeben.
 
+## Verschluesselung und Schutz der Daten
+
+Der Cookie-Export enthaelt Geheimnisse wie Cookie, CSRF-Wert und Refresh-Token.
+Diese Daten werden im empfohlenen Pfad nur ueber HTTP vom Service an FHEM
+uebertragen und danach als von `echodevice` erwartete JSON-Datei im
+FHEM-Dateisystem abgelegt.
+
+Eine zusaetzliche Verschluesselung dieser Exportdatei ist nicht Teil des
+Standardpfads, weil `echodevice` die Datei im Klartext-JSON-Format liest. Eine
+verschluesselte Datei wuerde deshalb entweder Aenderungen an `echodevice` oder
+einen separaten Entschluesselungsschritt direkt vor dem Import erfordern. Beides
+wuerde den Integrationspfad komplexer machen und waere nicht mehr kompatibel mit
+dem bestehenden Importverhalten.
+
+Der Schutz erfolgt deshalb ueber begrenzte Datenhaltung und Zugriffskontrolle:
+Der Service schreibt nicht mehr direkt in FHEM-Pfade, der komplette Response-Body
+wird nicht in Readings uebernommen, und die Exportdatei liegt nur lokal im
+FHEM-Container. Der Exportpfad sollte nur fuer den FHEM-Benutzer lesbar sein und
+nicht in Backups, Logs oder allgemein freigegebene Volumes gelangen. Wenn
+Verschluesselung at rest benoetigt wird, sollte sie auf Host-, Dateisystem-,
+Volume- oder Backup-Ebene umgesetzt werden.
+
+Fuer den Transport zwischen FHEM und Service bleibt `AUTH_TOKEN` verpflichtend
+empfohlen. In Netzen ausserhalb eines vertrauenswuerdigen Docker- oder
+LAN-Segments soll der Zugriff zusaetzlich ueber TLS, zum Beispiel per Reverse
+Proxy, abgesichert werden.
+
 ## Migration und Kompatibilitaet
 
 Bestehende Setups mit Shared Volume und `save=<filename>` bleiben technisch
