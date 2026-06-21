@@ -8,11 +8,12 @@ const logger = require('./logger');
 const { readJson, writeJson, ensureDirForFile } = require('./store');
 const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
 const { buildLoginFlowResponse } = require('./login-flow');
+const { ensureDir } = require('./fs-utils');
 
 ensureDirForFile(config.stateFile);
 ensureDirForFile(config.metadataFile);
-fs.mkdirSync(config.cookieExportDir, { recursive: true });
-fs.mkdirSync(config.debugHtmlDir, { recursive: true });
+ensureDir(config.cookieExportDir, { mkdirSync: fs.mkdirSync, logger, label: 'cookie export directory' });
+ensureDir(config.debugHtmlDir, { mkdirSync: fs.mkdirSync, logger, label: 'debug HTML directory' });
 
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -165,6 +166,16 @@ function getStatus() {
   };
 }
 
+function shouldAutoRefreshStatus(state) {
+  if (!state?.serviceUpdatedAt) return false;
+
+  const updatedAtMs = new Date(state.serviceUpdatedAt).getTime();
+  if (!Number.isFinite(updatedAtMs)) return false;
+
+  const ageHours = (Date.now() - updatedAtMs) / 3600000;
+  return ageHours >= config.refreshMinAgeHours;
+}
+
 async function performRefresh(reason = 'manual') {
   const state = loadState();
   if (!state) {
@@ -202,14 +213,31 @@ async function stopProxyFlowIfActive() {
   proxyFlowActive = false;
 }
 
+async function handleStatus(req, res) {
+  try {
+    const state = loadState();
+    if (state && shouldAutoRefreshStatus(state)) {
+      try {
+        await refreshSingleton('status');
+        logger.info('Status request triggered automatic refresh');
+      } catch (error) {
+        logger.error('Automatic status refresh failed:', error.message);
+      }
+    }
+
+    res.json(getStatus());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 app.get('/healthz', (req, res) => {
   const status = getStatus();
   res.status(200).json(status);
 });
 
-app.get('/api/status', requireAuth, (req, res) => {
-  res.json(getStatus());
-});
+app.get('/api/status', requireAuth, handleStatus);
+app.post('/api/status', requireAuth, handleStatus);
 
 app.get('/api/state', requireAuth, (req, res) => {
   const raw = req.query.raw === '1';

@@ -4,8 +4,10 @@ REST-Service für Amazon-Alexa-Cookies auf Basis von `alexa-cookie2`.
 
 Der Service stellt einen browsergestützten Login-/Proxy-Flow bereit,
 speichert den kompletten Registrierungszustand persistent unter `/data`,
-liefert bei Bedarf eine zu `37_echodevice.pm` kompatible JSON-Cachedatei
-und kann bestehende Cookies zyklisch oder per API refreshen.
+liefert Cookie-Exportdaten per HTTP und kann bestehende Cookies zyklisch oder
+per API refreshen. Die empfohlene FHEM-Integration holt den Export ab, schreibt
+ihn lokal im FHEM-Container und triggert danach den Import in `echodevice`.
+`save=<filename>` bleibt nur als Legacy-Kompatibilitätsoption erhalten.
 
 ## Schnellstart mit HTTPMOD
 
@@ -26,12 +28,14 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
        image: ghcr.io/fhem/alexa-cookie-service:0.3.1
        environment:
          AUTH_TOKEN: change-me
-         COOKIE_EXPORT_DIR: /opt/fhem/cache/alexa-cookie
          PROXY_PUBLIC_HOST: 192.168.178.10
        ports:
          - "58090:58090"
        restart: unless-stopped
    ```
+
+   `COOKIE_EXPORT_DIR` brauchst du nur noch, wenn du den Legacy-Pfad mit
+   `save=<filename>` weiter nutzen willst.
 
    Starten:
 
@@ -42,7 +46,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    Wichtige Referenzen:
    - [Compose-Beispiel](./docker-compose.yml)
    - [Umgebungsvariablen](#container--und-laufzeitkonfiguration)
-   - [Exportname und `save=<filename>`](#datenhaltung)
+   - [Lokaler Exportfluss und Legacy-`save=<filename>`](#datenhaltung)
    </details>
 
 2. HTTPMOD einrichten.
@@ -53,17 +57,18 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    Lege in FHEM ein `HTTPMOD`-Device an, das den Service ansprechen kann.
    Das fertige Beispiel liegt in [scripts/example_fhem_httpmod_package.cfg](./scripts/example_fhem_httpmod_package.cfg).
 
-   Für den Minimalpfad brauchst du:
-   - den Status-Endpunkt `http://alexa-cookie-service:58080/api/status`
-   - `set loginStart` auf `/api/cookie/login/start`
+   Für den empfohlenen Pfad brauchst du:
+   - den Status-Endpunkt `http://alexa-cookie-service:58080/api/status`, der bei veraltetem Zustand vor der Antwort automatisch einen Refresh ausloest
+   - `get exportCookie` auf `/api/cookie`
+   - `set refresh` auf `/api/cookie/refresh`
+   - eine lokale FHEM-Callback-Funktion, die den JSON-Body mit `write_cookie_export_and_trigger_import` in das lokale Exportverzeichnis schreibt
    - das Reading `proxyUrl` für die Browser-URL
    - das Reading `message` für die Login-Meldung
    - das Reading `error` für Fehlerzustände
 
    Optional hilfreich:
    - `get loginUrl` für die direkte Proxy-URL
-   - `set refresh` für den späteren Refresh
-   - `get exportCookie` für den manuellen Export
+   - `save=<filename>` bleibt als Legacy-Option auf der Service-Seite erhalten
 
    </details>
 
@@ -90,13 +95,9 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 
 5. HTTPMOD starten.
 
-   Wenn der Login erfolgreich abgeschlossen ist, den Refresh ausloesen:
-
-   ```text
-   set AlexaCookieService refresh
-   ```
-
-   Damit wird die Cookie-Datei geschrieben und der nachgelagerte Import in `echodevice` angestossen.
+   Der periodische `GET /api/status`-Aufruf aktualisiert den Servicezustand automatisch, sobald die letzte Aktualisierung aelter als die konfigurierte Mindestgrenze ist.
+   `set AlexaCookieService refresh` bleibt als manueller Fallback erhalten, ist fuer den normalen Polling-Betrieb aber nicht mehr noetig.
+   Der anschließende `get exportCookie`-Aufruf liefert das Cookie-JSON, das die lokale FHEM-Hilfsfunktion in die Datei schreibt und danach in `echodevice` importiert.
 
 ## Enthaltene Komponenten
 
@@ -104,7 +105,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 - Dockerfile
 - docker-compose.yml
 - `.env.example`
-- Hilfsskripte für FHEM
+- HTTPMOD-Beispiel und FHEM-Package-Loader
 
 ## Wichtige Endpunkte
 
@@ -114,8 +115,8 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 - `GET /api/state?raw=1` – kompletter gespeicherter Zustand
 - `POST /api/cookie/login/start` – startet den Login-/Proxy-Flow
 - `GET /api/cookie/login/url` – startet den Login-/Proxy-Flow und liefert die Proxy-URL
-- `POST /api/cookie/refresh` – Refresh mit `formerRegistrationData`, optional `save=<filename>`
-- `GET /api/cookie` – JSON-Cachedatei im `echodevice`-Schema, optional `save=<filename>`
+- `POST /api/cookie/refresh` – Refresh mit `formerRegistrationData`; `save=<filename>` nur fuer Legacy-Kompatibilität
+- `GET /api/cookie` – Cookie-Export im `echodevice`-Schema; `save=<filename>` nur fuer Legacy-Kompatibilität
 - `GET /api/cookie/text` – nur der Cookie als Text
 
 Die bisherigen Pfade `/api/login/start`, `/api/login/url`, `/api/refresh` und `/api/cookie.txt`
@@ -134,14 +135,19 @@ Dieser Zustand ist die Grundlage für spätere Refreshes.
 Zusätzlich schreibt der Service:
 - `METADATA_FILE` – Metadaten zum letzten Update
 
-Wichtig:
-Wenn `save=<filename>` fuer `POST /api/cookie/refresh` oder `GET /api/cookie` verwendet wird,
-wird die JSON-Datei absichtlich kompakt in einer einzelnen Zeile geschrieben,
-weil `37_echodevice.pm` den JSON-Import zeilenbasiert implementiert und mit mehrzeiligem
-Pretty-Print nicht korrekt arbeitet.
-`save` ist dabei nur ein Dateiname, kein Pfad.
-Die Datei wird immer unterhalb von `COOKIE_EXPORT_DIR` gespeichert.
-`COOKIE_EXPORT_FILE` wird aus Kompatibilitaetsgruenden vorerst noch als Legacy-Name akzeptiert.
+Für den empfohlenen FHEM-Flow gilt:
+
+- `GET /api/cookie` liefert die Export-JSON im Response.
+- FHEM schreibt diese JSON lokal in die Datei, die `echodevice` erwartet.
+- Danach kann der vorhandene `echodevice_NPMWaitForCookie($hash)`-Pfad ausgelöst werden.
+
+Legacy-Kompatibilität:
+
+- Wenn `save=<filename>` fuer `POST /api/cookie/refresh` oder `GET /api/cookie` verwendet wird,
+  schreibt der Service weiterhin eine kompakte Ein-Zeilen-JSON unterhalb von `COOKIE_EXPORT_DIR`.
+- `save` ist dabei nur ein Dateiname, kein Pfad.
+- Die Legacy-Dateiablage ist nur sinnvoll, wenn Service und FHEM ein gemeinsames Exportverzeichnis haben.
+- `COOKIE_EXPORT_FILE` wird aus Kompatibilitaetsgruenden vorerst noch als Legacy-Name akzeptiert.
 
 Das exportierte JSON hat dieses Schema:
 
@@ -159,22 +165,10 @@ Verhalten der Endpunkte:
 
 - Login schreibt nur `STATE_FILE` und `METADATA_FILE`
 - `POST /api/cookie/refresh` schreibt keine Exportdatei ohne `save=<filename>`
-- `GET /api/cookie` liefert das JSON im Response und speichert es nur mit `save=<filename>`
+- `GET /api/cookie` liefert das JSON im Response; mit `save=<filename>` wird zusätzlich die Legacy-Datei geschrieben
 - `GET /api/cookie/text` liefert den Cookie als eine Zeile Text
 - alle JSON-Ausgaben/-Dateien fuer das `echodevice`-Schema sind kompakt und ohne Zeilenumbrueche
 - `save=696result.json` speichert bei `COOKIE_EXPORT_DIR=/opt/fhem/cache/alexa-cookie` nach `/opt/fhem/cache/alexa-cookie/696result.json`
-
-Beispiele:
-
-```bash
-curl -X POST -H "x-auth-token: change-me" \
-  "http://127.0.0.1:58080/api/cookie/refresh?save=696result.json"
-```
-
-```bash
-curl -H "x-auth-token: change-me" \
-  "http://127.0.0.1:58080/api/cookie?save=696result.json"
-```
 
 ## Architektur und Motivation
 
@@ -189,6 +183,8 @@ Der Hauptgrund ist die klare Trennung der Laufzeitumgebungen:
   und einen eigenen Update-Zyklus mit
 - ein gemeinsames Image wuerde zwei technisch unterschiedliche Aufgabenbereiche
   vermischen und dadurch Wartung, Debugging und Updates unnoetig verkomplizieren
+- wenn FHEM und der Service auf getrennten Hosts laufen oder kein Shared Volume
+  vorhanden ist, kann der Service nicht direkt in das FHEM-Dateisystem schreiben
 
 Seit Version 5 des FHEM-Images ist zudem kein Node Package Manager mehr im
 FHEM-(Perl-)Container enthalten.
@@ -212,34 +208,18 @@ Das bedeutet:
 Die Trennung ist damit keine unnoetige Zusatzkomplexitaet,
 sondern eine bewusste Designentscheidung zugunsten von Stabilitaet,
 Wartbarkeit und klaren Zustaendigkeiten.
+Der empfohlene FHEM-Flow holt die Cookie-JSON deshalb per HTTP ab, schreibt sie
+lokal im FHEM-Container und triggert danach den vorhandenen Importpfad.
 
 ## FHEM-Anbindung
 
 Das Repository enthält generische FHEM-Helfer.
-Die konkrete Einbindung von `37_echodevice.pm` bleibt installationsabhängig.
+Die empfohlene Einbindung ruft `GET /api/cookie` per HTTPMOD ab, schreibt die Exportdatei lokal in FHEM und triggert danach den bestehenden `echodevice`-Import.
 
-Ausfuehrliche Hintergruende zur FHEM-Integration, zum Exportnamen und zu den optionalen Triggern stehen in den Abschnitten oben und im Beispiel [scripts/example_fhem_httpmod_package.cfg](./scripts/example_fhem_httpmod_package.cfg).
+Ausfuehrliche Hintergruende zur FHEM-Integration, zum Exportnamen, zum lokalen Schreiben und zu den optionalen Triggern stehen in den Abschnitten oben und im Beispiel [scripts/example_fhem_httpmod_package.cfg](./scripts/example_fhem_httpmod_package.cfg).
 
-## Alternaive Zugrifswege
-
-Hilfsskripte:
-- `scripts/fhem_fetch_cookie.sh`
-- `scripts/fhem_dump_cookie_json.sh`
-- `scripts/example_fhem_notify.txt`
-
-Typische Varianten:
-
-### Variante A: FHEM spiegelt nur den Cookie lokal
-
-```bash
-SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-cookie.txt ./scripts/fhem_fetch_cookie.sh
-```
-
-### Variante B: FHEM spiegelt den kompletten Zustand lokal
-
-```bash
-SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache/alexa-cookie-external-state.json ./scripts/fhem_dump_cookie_json.sh
-```
+Das einzige gepflegte Anwenderbeispiel ist [scripts/example_fhem_httpmod_package.cfg](./scripts/example_fhem_httpmod_package.cfg).
+Andere Beispielpfade wie `at`/`notify`-Fragmente oder Shell-Skripte werden nicht mehr mitgeliefert.
 
 ## Sicherheitshinweise
 
@@ -254,10 +234,13 @@ SERVICE_URL=http://127.0.0.1:58080 AUTH_TOKEN=change-me OUT_FILE=/opt/fhem/cache
 - MFA, Captcha und Regionseffekte bleiben möglich.
 - Der initiale Login ist absichtlich browsergestützt; das ist robuster als ein erzwungener Headless-Flow.
 
-## Mögliche Zukünfrige Einbindung in  `37_echodevice.pm`
+## Empfohlener Importfluss
 
-`37_echodevice.pm` liest die Cookie-Daten anstatt aus einer lokalen Datei direkt von diesem Service.
-Das echomodul FHEM triggert bei Bedarf den Refresh per REST API und verwendet die vorhandenen Werte aus dem Service:
-- den `AUTH_TOKEN` aus der `.env` in FHEM hinterlegen
-- aus FHEM `POST /api/cookie/refresh?save=<filename>` aufrufen
-- danach den aktuellen Cookie mit `GET /api/cookie` abrufen und in `echodevice` verwenden.
+Für getrennte Hosts oder Deployments ohne Shared Volume ist der empfohlene Ablauf:
+
+1. `GET /api/status` aus FHEM aufrufen, damit der Servicezustand bei Bedarf automatisch per Refresh aktualisiert wird.
+2. `GET /api/cookie` abrufen.
+3. Die Response lokal in die von `echodevice` erwartete Datei schreiben.
+4. `echodevice_NPMWaitForCookie($hash)` aus dem FHEM-seitigen Code triggern.
+
+`POST /api/cookie/refresh` und `save=<filename>` bleiben als manuelle Legacy-/Fallback-Optionen erhalten, sind aber nicht der empfohlene Standardpfad.

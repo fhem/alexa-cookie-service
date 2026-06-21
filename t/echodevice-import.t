@@ -1,12 +1,18 @@
 use strict;
 use warnings;
 
+use File::Temp qw(tempdir);
+use File::Spec;
+use JSON::PP qw(decode_json);
 use Test::More;
 
 use FHEM::AlexaCookieService::EchodeviceImport;
 
 is FHEM::AlexaCookieService::EchodeviceImport::export_name_for_hash({ NR => 696 }), "696result.json", "export name is derived from current FHEM NR";
 is FHEM::AlexaCookieService::EchodeviceImport::export_name_for_hash({ NR => 0 }), "0result.json", "NR zero is accepted";
+is FHEM::AlexaCookieService::EchodeviceImport::export_name_for_hash({ NR => '../696' }), undef, "non-numeric NR is rejected";
+is FHEM::AlexaCookieService::EchodeviceImport::export_path_for_hash({ NR => 696 }, export_dir => '/tmp/export-root'), '/tmp/export-root/696result.json', 'export path is derived from NR';
+
 
 {
   no warnings "once";
@@ -21,7 +27,54 @@ is FHEM::AlexaCookieService::EchodeviceImport::validate_target(undef), "missing 
 is FHEM::AlexaCookieService::EchodeviceImport::validate_target({ TYPE => "echodevice", NR => 1 }), "missing device name", "validation requires device name";
 is FHEM::AlexaCookieService::EchodeviceImport::validate_target({ NAME => "Echo", TYPE => "dummy", NR => 1 }), "device is not an echodevice", "validation requires echodevice type";
 is FHEM::AlexaCookieService::EchodeviceImport::validate_target({ NAME => "Echo", TYPE => "echodevice" }), "missing internal FHEM NR", "validation requires FHEM NR";
+is FHEM::AlexaCookieService::EchodeviceImport::validate_target({ NAME => "Echo", TYPE => "echodevice", NR => '../1' }), "missing internal FHEM NR", "validation rejects non-numeric FHEM NR";
 is FHEM::AlexaCookieService::EchodeviceImport::validate_target({ NAME => "Echo", TYPE => "echodevice", NR => 1 }), undef, "valid echodevice target passes validation";
+
+my $tmpdir = tempdir(CLEANUP => 1);
+my $export_dir = File::Spec->catdir($tmpdir, 'nested', 'exports');
+my $target = { NAME => "Echo", TYPE => "echodevice", NR => 42 };
+my $payload = {
+  localCookie => 'cookie-data',
+  csrf => 'csrf-token',
+  refreshToken => 'refresh-token',
+  macDms => 'mac-dms',
+  formerRegistrationData => { foo => 'bar' },
+};
+
+my $error = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export($target, $payload, export_dir => $export_dir);
+is $error, undef, "write_cookie_export succeeds for a valid target";
+ok -f "$export_dir/42result.json", "cookie export file was created";
+
+open my $fh, '<', "$export_dir/42result.json" or die $!;
+local $/;
+my $content = <$fh>;
+close $fh;
+
+ok $content !~ /\n/, "cookie export is written as compact JSON";
+is_deeply decode_json($content), $payload, "cookie export round-trips through JSON";
+
+my $from_json = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export($target, '{"localCookie":"text-cookie","csrf":"text-csrf"}', export_dir => $export_dir);
+is $from_json, undef, "write_cookie_export accepts raw JSON strings";
+
+my $invalid_payload = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export($target, "not-json", export_dir => $export_dir);
+is $invalid_payload, "invalid cookie export payload", "write_cookie_export rejects invalid payloads";
+
+my $bad_target = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export({ NAME => "Echo", TYPE => "echodevice", NR => '../42' }, $payload, export_dir => $export_dir);
+is $bad_target, "missing internal FHEM NR", "write_cookie_export rejects unsafe targets";
+
+{
+  no warnings "once";
+  local $main::defs{EchoByName} = { NAME => "EchoByName", TYPE => "echodevice", NR => 43 };
+  my $by_name_error = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export_for_device("EchoByName", $payload, export_dir => $export_dir);
+  is $by_name_error, undef, "write_cookie_export_for_device writes via device name";
+  ok -f "$export_dir/43result.json", "device-name helper writes the expected file";
+}
+
+my $missing_dir = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export($target, $payload);
+is $missing_dir, "missing export dir", "write_cookie_export requires an export dir";
+
+my $missing_name = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export_for_device(undef, $payload, export_dir => $export_dir);
+is $missing_name, "missing echodevice name", "write_cookie_export_for_device rejects missing names";
 
 my $called_with;
 my $login_type_seen;
@@ -35,15 +88,15 @@ my $login_type_seen;
   };
 }
 
-my $hash = { NAME => "Echo", TYPE => "echodevice", NR => 42 };
-my $error = FHEM::AlexaCookieService::EchodeviceImport::trigger_import($hash, login_type => "external test");
+my $hash = { NAME => "Echo", TYPE => "echodevice", NR => 44 };
+$error = FHEM::AlexaCookieService::EchodeviceImport::trigger_import($hash, login_type => "external test");
 is $error, undef, "trigger_import succeeds when echodevice import function exists";
 is $called_with, $hash, "trigger_import passes target hash to echodevice";
 is $login_type_seen, "external test", "trigger_import sets login type while calling echodevice";
 
 {
   no warnings "once";
-  local $main::defs{EchoImportByName} = { NAME => "EchoImportByName", TYPE => "echodevice", NR => 43 };
+  local $main::defs{EchoImportByName} = { NAME => "EchoImportByName", TYPE => "echodevice", NR => 45 };
   $called_with = undef;
   $login_type_seen = undef;
   $error = FHEM::AlexaCookieService::EchodeviceImport::trigger_import_for_device("EchoImportByName", login_type => "external by name");
@@ -62,5 +115,22 @@ is $error, "echodevice_NPMWaitForCookie is not available", "trigger_import repor
 
 $error = FHEM::AlexaCookieService::EchodeviceImport::trigger_import_for_device(undef);
 is $error, "missing echodevice name", "trigger_import_for_device reports missing name";
+
+{
+  no warnings "redefine";
+  *FHEM::AlexaCookieService::EchodeviceImport::trigger_import = sub {
+    my ($hash_arg, %args) = @_;
+    $called_with = $hash_arg;
+    $login_type_seen = $args{login_type};
+    return;
+  };
+
+  $called_with = undef;
+  $login_type_seen = undef;
+  my $combo_error = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export_and_trigger_import($target, $payload, export_dir => $tmpdir, login_type => 'combo');
+  is $combo_error, undef, 'write_cookie_export_and_trigger_import writes and then imports';
+  is $called_with, $target, 'combined helper forwards target to trigger_import';
+  is $login_type_seen, 'combo', 'combined helper forwards trigger options';
+}
 
 done_testing;

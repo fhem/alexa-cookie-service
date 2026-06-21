@@ -11,7 +11,9 @@ in this repository state.
 
 The packages are designed so that a future FHEM device module and a possible
 future `37_echodevice.pm` integration can share the same HTTP, state and import
-logic.
+logic. The preferred flow is to fetch the export JSON over HTTP, write it
+locally in FHEM and then trigger the existing import path. `save=<filename>`
+remains available only as a legacy compatibility option.
 
 ## Packages
 
@@ -22,11 +24,11 @@ JSON responses.
 
 Supported request builders:
 
-- `status_request` -> `GET /api/status`
+- `status_request` -> `GET /api/status` (the service may auto-refresh stale state before responding)
 - `login_url_request` -> `GET /api/cookie/login/url`
 - `login_start_request` -> `POST /api/cookie/login/start`
-- `refresh_request` -> `POST /api/cookie/refresh`
-- `cookie_request` -> `GET /api/cookie`
+- `refresh_request` -> `POST /api/cookie/refresh` (`save` only for legacy compatibility)
+- `cookie_request` -> `GET /api/cookie` (`save` only for legacy compatibility)
 - `cookie_text_request` -> `GET /api/cookie/text`
 
 Constructor options:
@@ -46,14 +48,16 @@ my $client = FHEM::AlexaCookieService::Client->new(
   timeout  => 30,
 );
 
-my $request = $client->refresh_request(
-  save     => '696result.json',
+my $request = $client->cookie_request(
   callback => sub {
     my ($param, $err, $data) = @_;
     my ($json_error, $body) = $client->decode_json_response($err, $data);
     return if $json_error;
 
-    # Caller decides how to update readings or trigger imports.
+    # Caller writes $body to the local echodevice export file and then
+    # triggers the import path.
+    # If you still need the legacy service-side export copy, pass save => ...
+    # to the request builder.
   },
 );
 
@@ -87,13 +91,20 @@ for my $name (sort keys %{$readings}) {
 ### `FHEM::AlexaCookieService::EchodeviceImport`
 
 Contains the small amount of `echodevice`-specific glue needed for the current
-import path.
+import path after the caller has written the export locally.
 
 Useful functions:
 
 - `export_name_for_hash($echodevice_hash)`
+- `export_name_for_device($echodevice_name)`
 - `validate_target($echodevice_hash)`
+- `export_path_for_hash($echodevice_hash, export_dir => $dir)`
+- `write_cookie_export($echodevice_hash, $payload, export_dir => $dir)`
+- `write_cookie_export_for_device($echodevice_name, $payload, export_dir => $dir)`
+- `write_cookie_export_and_trigger_import($echodevice_hash, $payload, export_dir => $dir)`
+- `write_cookie_export_and_trigger_import_for_device($echodevice_name, $payload, export_dir => $dir)`
 - `trigger_import($echodevice_hash, %args)`
+- `trigger_import_for_device($echodevice_name, %args)`
 
 The export filename is always derived from the current FHEM `NR`, for example
 `696result.json`. This avoids relying on stale filenames after `rereadcfg` or
@@ -111,10 +122,12 @@ use FHEM::AlexaCookieService::EchodeviceImport;
 my $error = FHEM::AlexaCookieService::EchodeviceImport::validate_target($echo_hash);
 return $error if $error;
 
-my $save_name = FHEM::AlexaCookieService::EchodeviceImport::export_name_for_hash($echo_hash);
-
-# Call the service with save=$save_name first, then trigger echodevice import.
-$error = FHEM::AlexaCookieService::EchodeviceImport::trigger_import($echo_hash);
+# Fetch the export JSON into $export_json, write it locally, then trigger import.
+$error = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export_and_trigger_import(
+  $echo_hash,
+  $export_json,
+  export_dir => q[/opt/fhem/cache/alexa-cookie],
+);
 return $error if $error;
 ```
 
@@ -124,9 +137,11 @@ The intended flow for an external refresh is:
 
 1. Resolve the target `echodevice` hash.
 2. Derive the dynamic export filename with `export_name_for_hash`.
-3. Call `POST /api/cookie/refresh?save=<filename>` through `Client.pm`.
-4. After a successful response, call `trigger_import`.
-5. Let the caller update readings using `State.pm`.
+3. Poll `GET /api/status` through `Client.pm` so stale service state is refreshed automatically before the response is returned.
+4. Fetch the export JSON with `GET /api/cookie` through `Client.pm`.
+5. Write the JSON body to the local export file and trigger import with `write_cookie_export_and_trigger_import`.
+6. Keep `trigger_import` available for legacy flows where the service already wrote the export file.
+7. Let the caller update readings using `State.pm`.
 
 The package layer deliberately does not define devices, attributes, timers,
 readings or commandref documentation. Those belong into a future FHEM module.
