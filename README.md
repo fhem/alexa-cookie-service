@@ -96,6 +96,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 5. HTTPMOD starten.
 
    Der periodische `GET /api/status`-Aufruf aktualisiert den Servicezustand automatisch, sobald die letzte Aktualisierung aelter als die konfigurierte Mindestgrenze ist.
+   Das `npm_refresh_intervall` im `echodevice` bzw. `HTTPMOD` sollte groesser als der Refresh-Zyklus des Containers konfiguriert werden; sonst kann der Client vor der naechsten gueltigen Aktualisierung erneut pollen und auf die Mindestalter-Pruefung laufen.
    `set AlexaCookieService refresh` bleibt als manueller Fallback erhalten, ist fuer den normalen Polling-Betrieb aber nicht mehr noetig.
    Der anschließende `get exportCookie`-Aufruf liefert das Cookie-JSON, das die lokale FHEM-Hilfsfunktion in die Datei schreibt und danach in `echodevice` importiert.
 
