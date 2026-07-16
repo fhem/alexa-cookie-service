@@ -135,3 +135,28 @@ test('ensureTlsMaterial replaces the server certificate when the CA changes', ()
   assert.match(readCertificateInfo(renewed.serverCertPath).issuer, /ACS Replacement CA/);
   assert.match(readCertificateInfo(renewed.serverCertPath).subjectAltNames, /DNS:alexa-cookie-service/);
 });
+
+test('ensureTlsMaterial repairs a mismatched managed server key and certificate', () => {
+  const tmpDir = makeTempDir('alexa-cookie-service-tls-pair-repair-');
+  const tlsDir = path.join(tmpDir, 'tls');
+  const initial = ensureTlsMaterial({ tlsDir, serverName: 'alexa-cookie-service' });
+  const initialCaHash = fileHash(initial.caCertPath);
+  const initialCertHash = fileHash(initial.serverCertPath);
+  const foreign = generateServerCertificate(path.join(tmpDir, 'foreign'), {
+    commonName: 'alexa-cookie-service',
+    dnsNames: ['alexa-cookie-service', 'localhost'],
+    caKey: initial.caKeyPath,
+    caCert: initial.caCertPath
+  });
+  const foreignKeyHash = fileHash(foreign.serverKey);
+  fs.copyFileSync(foreign.serverKey, initial.serverKeyPath);
+
+  const repaired = ensureTlsMaterial({ tlsDir, serverName: 'alexa-cookie-service' });
+  assert.equal(fileHash(repaired.caCertPath), initialCaHash);
+  assert.notEqual(fileHash(repaired.serverKeyPath), foreignKeyHash);
+  assert.notEqual(fileHash(repaired.serverCertPath), initialCertHash);
+
+  const stable = ensureTlsMaterial({ tlsDir, serverName: 'alexa-cookie-service' });
+  assert.equal(fileHash(stable.serverKeyPath), fileHash(repaired.serverKeyPath));
+  assert.equal(fileHash(stable.serverCertPath), fileHash(repaired.serverCertPath));
+});

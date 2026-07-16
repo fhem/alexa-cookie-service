@@ -3,7 +3,7 @@ const os = require('os');
 const path = require('path');
 const net = require('net');
 const { execFileSync } = require('child_process');
-const { X509Certificate } = require('crypto');
+const { createPrivateKey, createPublicKey, X509Certificate } = require('crypto');
 const { ensureDir } = require('./fs-utils');
 
 const DEFAULT_CA_DAYS = 3650;
@@ -127,11 +127,10 @@ function parseExpiry(validTo) {
 
 function certificateMatchesServerName(cert, serverName) {
   if (!serverName) return true;
-  const san = cert.subjectAltName || '';
   if (net.isIP(serverName) === 4 || net.isIP(serverName) === 6) {
-    return san.includes(`IP Address:${serverName}`) || san.includes(`IP:${serverName}`);
+    return Boolean(cert.checkIP(serverName));
   }
-  return san.includes(`DNS:${serverName}`);
+  return Boolean(cert.checkHost(serverName));
 }
 
 function shouldRenewServerCertificate(certPath, { serverName, renewBeforeDays = 30 } = {}) {
@@ -235,6 +234,19 @@ function generateServerMaterial({ tlsDir, serverName, certDays, caKeyPath, caCer
   }
 }
 
+function serverKeyMatchesCertificate(keyPath, certPath) {
+  if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) return false;
+  try {
+    const privatePublicKey = createPublicKey(createPrivateKey(fs.readFileSync(keyPath)))
+      .export({ type: 'spki', format: 'der' });
+    const certificatePublicKey = new X509Certificate(fs.readFileSync(certPath)).publicKey
+      .export({ type: 'spki', format: 'der' });
+    return privatePublicKey.equals(certificatePublicKey);
+  } catch {
+    return false;
+  }
+}
+
 function ensureServerMaterial(tlsDir, options) {
   const {
     serverName,
@@ -250,6 +262,7 @@ function ensureServerMaterial(tlsDir, options) {
   const serverCertPath = serverCertFile || path.join(tlsDir, 'server.crt');
   const needsRenewal =
     !fs.existsSync(serverKeyPath) ||
+    !serverKeyMatchesCertificate(serverKeyPath, serverCertPath) ||
     !serverCertTrustedByCa(serverCertPath, caCertPath) ||
     shouldRenewServerCertificate(serverCertPath, { serverName, renewBeforeDays });
 
@@ -284,6 +297,9 @@ function ensureTlsMaterial(options = {}) {
   }
 
   const normalizedMode = String(serverCertMode || 'managed').toLowerCase();
+  if (!['managed', 'external'].includes(normalizedMode)) {
+    throw new Error('Invalid TLS_SERVER_CERT_MODE ' + serverCertMode + ': expected managed or external');
+  }
   const serverKeyPath = serverKeyFile || path.join(tlsDir, 'server.key');
   const serverCertPath = serverCertFile || path.join(tlsDir, 'server.crt');
 
@@ -296,6 +312,9 @@ function ensureTlsMaterial(options = {}) {
     }
 
     const serverCert = new X509Certificate(fs.readFileSync(serverCertPath));
+    if (!serverKeyMatchesCertificate(serverKeyPath, serverCertPath)) {
+      throw new Error('TLS server key ' + serverKeyPath + ' does not match certificate ' + serverCertPath);
+    }
     if (!certificateMatchesServerName(serverCert, serverName)) {
       throw new Error(`TLS server certificate ${serverCertPath} does not match server name ${serverName}`);
     }

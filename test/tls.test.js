@@ -6,7 +6,7 @@ const path = require('node:path');
 const https = require('node:https');
 const { spawn } = require('node:child_process');
 const { X509Certificate } = require('node:crypto');
-const { ensureTlsMaterial, shouldRenewServerCertificate } = require('../src/tls');
+const { certificateMatchesServerName, ensureTlsMaterial, shouldRenewServerCertificate } = require('../src/tls');
 const { generateCertificateAuthority, generateServerCertificate, makeTempDir } = require('./helpers/tls-test-utils');
 
 function request(url, caPath) {
@@ -201,6 +201,64 @@ test('shouldRenewServerCertificate returns true when SAN does not match the targ
     }),
     true
   );
+});
+
+test('certificateMatchesServerName uses exact X.509 DNS and IP SAN matching', () => {
+  const tmpDir = makeTempDir('alexa-cookie-service-tls-san-match-');
+  const caDir = path.join(tmpDir, 'ca');
+  const serverDir = path.join(tmpDir, 'server');
+  const { caKey, caCert } = generateCertificateAuthority(caDir);
+  const { serverCert } = generateServerCertificate(serverDir, {
+    commonName: 'acs.example.internal.evil',
+    dnsNames: ['acs.example.internal.evil', 'exact.example.internal'],
+    ipAddresses: ['127.0.0.1', '::1'],
+    caKey,
+    caCert
+  });
+  const cert = new X509Certificate(fs.readFileSync(serverCert));
+
+  assert.equal(certificateMatchesServerName(cert, 'acs.example.internal'), false);
+  assert.equal(certificateMatchesServerName(cert, 'acs.example.internal.evil'), true);
+  assert.equal(certificateMatchesServerName(cert, 'exact.example.internal'), true);
+  assert.equal(certificateMatchesServerName(cert, '127.0.0.1'), true);
+  assert.equal(certificateMatchesServerName(cert, '127.0.0.2'), false);
+  assert.equal(certificateMatchesServerName(cert, '::1'), true);
+  assert.equal(certificateMatchesServerName(cert, '::2'), false);
+});
+
+test('ensureTlsMaterial rejects an unknown server certificate mode before creating files', () => {
+  const tlsDir = path.join(os.tmpdir(), 'alexa-cookie-service-invalid-mode-' + process.pid + '-' + Date.now());
+
+  assert.throws(
+    () => ensureTlsMaterial({
+      tlsDir,
+      serverName: 'alexa-cookie-service',
+      serverCertMode: 'externl'
+    }),
+    /Invalid TLS_SERVER_CERT_MODE externl: expected managed or external/
+  );
+  assert.equal(fs.existsSync(tlsDir), false);
+});
+
+test('ensureTlsMaterial rejects a mismatched external server key and certificate', () => {
+  const tmpDir = makeTempDir('alexa-cookie-service-tls-external-pair-');
+  const ca = generateCertificateAuthority(path.join(tmpDir, 'ca'));
+  const first = generateServerCertificate(path.join(tmpDir, 'first'), {
+    commonName: 'alexa-cookie-service', dnsNames: ['alexa-cookie-service'],
+    caKey: ca.caKey, caCert: ca.caCert
+  });
+  const second = generateServerCertificate(path.join(tmpDir, 'second'), {
+    commonName: 'alexa-cookie-service', dnsNames: ['alexa-cookie-service'],
+    caKey: ca.caKey, caCert: ca.caCert
+  });
+
+  assert.throws(() => ensureTlsMaterial({
+    tlsDir: tmpDir,
+    serverName: 'alexa-cookie-service',
+    serverCertMode: 'external',
+    serverKeyFile: first.serverKey,
+    serverCertFile: second.serverCert
+  }), /TLS server key .* does not match certificate/);
 });
 
 test('ensureTlsMaterial accepts externally provided server key and certificate', () => {

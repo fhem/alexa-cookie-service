@@ -30,12 +30,13 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    ```yaml
    services:
      alexa-cookie-service:
-       image: ghcr.io/fhem/alexa-cookie-service:0.3.5
+       image: ghcr.io/fhem/alexa-cookie-service:0.4.0
        environment:
          AUTH_TOKEN: change-me
          TLS_ENABLED: "true"
          PROXY_PUBLIC_HOST: 192.168.178.10
        ports:
+         - "58080:58080"
          - "58090:58090"
        restart: unless-stopped
    ```
@@ -46,7 +47,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    ```yaml
    services:
      alexa-cookie-service:
-       image: ghcr.io/fhem/alexa-cookie-service:0.3.5
+       image: ghcr.io/fhem/alexa-cookie-service:0.4.0
        environment:
          AUTH_TOKEN: change-me
          TLS_ENABLED: "true"
@@ -54,17 +55,24 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
          TLS_SERVER_NAME: acs.example.internal
          TLS_SERVER_KEY_FILE: /data/tls/server.key
          TLS_SERVER_CERT_FILE: /data/tls/server.crt
+         TLS_CA_CERT_FILE: /data/tls/external-ca.crt # only for a private CA
          PROXY_PUBLIC_HOST: 192.168.178.10
        volumes:
          - ./leaf/server.key:/data/tls/server.key:ro
          - ./leaf/server.crt:/data/tls/server.crt:ro
+         - ./leaf/ca.crt:/data/tls/external-ca.crt:ro # only for a private CA
        ports:
+         - "58080:58080"
          - "58090:58090"
        restart: unless-stopped
    ```
 
    In diesem Fall muss FHEM die CA oder Chain des Leaf-Zertifikats kennen; ein
    passendes `sslArgs`-Beispiel steht weiter unten.
+   Die Portfreigabe `58080:58080` macht die REST-API fuer FHEM auf einem anderen
+   Host erreichbar. Wenn FHEM im selben Docker-Netzwerk laeuft und den Service
+   ueber `alexa-cookie-service:58080` anspricht, kann diese Host-Portfreigabe
+   entfallen. Port `58090` muss fuer den Browser erreichbar bleiben.
 
    `COOKIE_EXPORT_DIR` brauchst du nur noch, wenn du den Legacy-Pfad mit
    `save=<filename>` weiter nutzen willst.
@@ -172,6 +180,10 @@ Die relevanten Container-Parameter sind bereits im Schnellstart beschrieben.
 Falls du nur die Defaults anpassen willst, nutze die Tabelle unten als Referenz.
 Der dokumentierte sichere Standard ist `TLS_ENABLED=true`; `TLS_ENABLED=false`
 bleibt nur als Rueckwaertskompatibilitaets-Default im Code erhalten.
+Der interne Container-Healthcheck verbindet sich standardmaessig mit
+`127.0.0.1`. Mit `HEALTHCHECK_HOST` kann dieses Request-Ziel unabhaengig von
+der Bind-Adresse `HOST` angepasst werden. `HOST=0.0.0.0` sollte daher nicht als
+Healthcheck-Ziel verwendet werden.
 
 ## TLS-Konfiguration
 
@@ -284,6 +296,10 @@ extern erzeugst und ACS nur die fertigen Dateien bereitstellt.
 - `TLS_SERVER_CERT_MODE=external`
 - `TLS_SERVER_KEY_FILE` und `TLS_SERVER_CERT_FILE` zeigen auf die extern
   bereitgestellten Leaf-Dateien
+- bei einer privaten CA zeigt `TLS_CA_CERT_FILE` auf deren eingebundene CA- oder
+  Chain-Datei; der interne Healthcheck verwendet diese zur Verifikation
+- bei einer oeffentlich bzw. systemweit vertrauten CA bleibt
+  `TLS_CA_CERT_FILE` ungesetzt und der Healthcheck verwendet den Node-System-Truststore
 - ACS erzeugt in diesem Modus keine lokale CA und stellt das Zertifikat nicht
   selbst aus
 - FHEM vertraut weiterhin der ausstellenden CA oder der Chain; bei einem
@@ -301,9 +317,11 @@ services:
       TLS_SERVER_NAME: acs.example.internal
       TLS_SERVER_KEY_FILE: /data/tls/server.key
       TLS_SERVER_CERT_FILE: /data/tls/server.crt
+      TLS_CA_CERT_FILE: /data/tls/external-ca.crt # nur bei privater CA
     volumes:
       - ./leaf/server.key:/data/tls/server.key:ro
       - ./leaf/server.crt:/data/tls/server.crt:ro
+      - ./leaf/ca.crt:/data/tls/external-ca.crt:ro # nur bei privater CA
 ```
 
 ### Private CA ausserhalb des Containers

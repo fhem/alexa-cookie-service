@@ -32,7 +32,7 @@ function waitForExit(child) {
   return new Promise((resolve) => child.once('exit', resolve));
 }
 
-test('healthcheck uses the configured TLS CA path', async () => {
+test('healthcheck uses the configured TLS CA path and loopback independently of bind HOST', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alexa-cookie-healthcheck-'));
   const tlsDir = path.join(tmpDir, 'tls');
   const dataDir = path.join(tmpDir, 'data');
@@ -42,7 +42,7 @@ test('healthcheck uses the configured TLS CA path', async () => {
   const env = {
     ...process.env,
     PORT: '58152',
-    HOST: '127.0.0.1',
+    HOST: '0.0.0.0',
     AUTH_TOKEN: 'test-token',
     TLS_ENABLED: 'true',
     TLS_DIR: tlsDir,
@@ -69,8 +69,9 @@ test('healthcheck uses the configured TLS CA path', async () => {
       env: {
         ...process.env,
         PORT: '58152',
-        HOST: '127.0.0.1',
+        HOST: '0.0.0.0',
         TLS_ENABLED: 'true',
+        TLS_SERVER_CERT_MODE: 'external',
         TLS_DIR: tlsDir,
         TLS_CA_CERT_FILE: externalCaPath
       },
@@ -87,4 +88,31 @@ test('healthcheck uses the configured TLS CA path', async () => {
     child.kill('SIGTERM');
     await waitForExit(child);
   }
+});
+
+test('external TLS healthcheck does not require the managed default CA file', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alexa-cookie-healthcheck-external-'));
+  const healthcheck = spawn(process.execPath, ['scripts/healthcheck.js'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: '9',
+      TLS_ENABLED: 'true',
+      TLS_SERVER_CERT_MODE: 'external',
+      TLS_DIR: path.join(tmpDir, 'missing-tls-directory')
+    },
+    stdio: ['ignore', 'ignore', 'pipe']
+  });
+
+  let stderr = '';
+  healthcheck.stderr.on('data', (chunk) => {
+    stderr += String(chunk);
+  });
+  const exitCode = await new Promise((resolve, reject) => {
+    healthcheck.on('error', reject);
+    healthcheck.on('exit', resolve);
+  });
+
+  assert.equal(exitCode, 1);
+  assert.doesNotMatch(stderr, /ENOENT|ca\.crt/);
 });
