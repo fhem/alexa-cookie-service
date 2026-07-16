@@ -2,6 +2,27 @@ const config = require('./config');
 
 let timestampFormatter;
 
+const JSON_SECRET_KEYS = [
+  'accessToken',
+  'access_token',
+  'authorization',
+  'cookie',
+  'deviceId',
+  'deviceSerial',
+  'frc',
+  'csrf',
+  'localCookie',
+  'macDms',
+  'map-md',
+  'loginCookie',
+  'refreshToken',
+  'refresh_token',
+  'secureSessionToken',
+  'source_token',
+  'token',
+  'Value'
+].join('|');
+
 function getTimestampFormatter() {
   if (!timestampFormatter) {
     timestampFormatter = new Intl.DateTimeFormat('sv-SE', {
@@ -23,10 +44,32 @@ function formatTimestamp(date = new Date()) {
   return getTimestampFormatter().format(date).replace(' ', 'T');
 }
 
+function redactSecrets(value) {
+  return String(value)
+    .replace(
+      new RegExp(`("(?:${JSON_SECRET_KEYS})"\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'gi'),
+      '$1"<redacted>"'
+    )
+    .replace(/((?:source_token|refresh_token|access_token|csrf|token)=)[^&\s"]+/gi, '$1<redacted>')
+    .replace(/(authorization:\s*(?:Bearer\s+)?)[^\s,}"]+/gi, '$1<redacted>')
+    .replace(/(Cookie:\s*)[^\r\n]+/gi, '$1<redacted>')
+    .replace(/(Cookie\s+[^=\s]+\s*=\s*)[^\r\n]+/gi, '$1<redacted>')
+    .replace(/(csrf=)[^,;\s]+/gi, '$1<redacted>')
+    .replace(/(Cookie=)[^\r\n]+/gi, '$1<redacted>');
+}
+
+function serialize(value) {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function write(level, args) {
-  const line = `[${formatTimestamp()} ${config.timeZone}] [${level}] ${args
-    .map((value) => (typeof value === 'string' ? value : JSON.stringify(value)))
-    .join(' ')}`;
+  const message = redactSecrets(args.map(serialize).join(' '));
+  const line = `[${formatTimestamp()} ${config.timeZone}] [${level}] ${message}`;
   process.stdout.write(`${line}\n`);
 }
 
@@ -55,5 +98,6 @@ module.exports = {
   warn,
   error,
   httpStream,
-  formatTimestamp
+  formatTimestamp,
+  redactSecrets
 };

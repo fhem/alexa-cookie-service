@@ -30,7 +30,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    ```yaml
    services:
      alexa-cookie-service:
-       image: ghcr.io/fhem/alexa-cookie-service:0.4.1
+       image: ghcr.io/fhem/alexa-cookie-service:0.4.2
        environment:
          AUTH_TOKEN: change-me
          TLS_ENABLED: "true"
@@ -47,7 +47,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    ```yaml
    services:
      alexa-cookie-service:
-       image: ghcr.io/fhem/alexa-cookie-service:0.4.1
+       image: ghcr.io/fhem/alexa-cookie-service:0.4.2
        environment:
          AUTH_TOKEN: change-me
          TLS_ENABLED: "true"
