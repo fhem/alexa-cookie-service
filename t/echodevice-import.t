@@ -3,7 +3,7 @@ use warnings;
 
 use File::Temp qw(tempdir);
 use File::Spec;
-use JSON::PP qw(decode_json);
+use JSON::PP qw(decode_json encode_json);
 use Test::More;
 
 use FHEM::AlexaCookieService::EchodeviceImport;
@@ -131,6 +131,39 @@ is $error, "missing echodevice name", "trigger_import_for_device reports missing
   is $combo_error, undef, 'write_cookie_export_and_trigger_import writes and then imports';
   is $called_with, $target, 'combined helper forwards target to trigger_import';
   is $login_type_seen, 'combo', 'combined helper forwards trigger options';
+}
+
+{
+  no warnings q{redefine};
+
+  my @adapter_call;
+  my @log_call;
+  local *main::AttrVal = sub {
+    my ($name, $attribute, $default) = @_;
+    return q{EchoFromHTTPMOD}
+      if $name eq q{AlexaCookieService} && $attribute eq q{echodevice};
+    return $default;
+  };
+  local *main::Log3 = sub { @log_call = @_ };
+  local *FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export_and_trigger_import_for_device = sub {
+    @adapter_call = @_;
+    return;
+  };
+
+  my $httpmod_hash = { NAME => q{AlexaCookieService}, TYPE => q{HTTPMOD} };
+  my $http_response = qq{HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n} . encode_json($payload);
+  $error = FHEM::AlexaCookieService::EchodeviceImport::httpmod_write_cookie_export_and_trigger_import($httpmod_hash, $http_response);
+
+  is $error, undef, q{HTTPMOD adapter accepts an export response};
+  is $adapter_call[0], q{EchoFromHTTPMOD}, q{HTTPMOD adapter resolves the echodevice attribute};
+  is_deeply $adapter_call[1], $payload, q{HTTPMOD adapter passes the decoded response payload};
+  is_deeply [@adapter_call[2, 3]], [export_dir => q{/opt/fhem/cache/alexa-cookie}], q{HTTPMOD adapter uses the local FHEM export directory};
+  is $log_call[1], 4, q{HTTPMOD adapter logs a successful import};
+
+  @adapter_call = ();
+  my $status_response = encode_json({ ok => 1, state => $payload });
+  FHEM::AlexaCookieService::EchodeviceImport::httpmod_write_cookie_export_and_trigger_import($httpmod_hash, $status_response);
+  is_deeply \@adapter_call, [], q{HTTPMOD adapter ignores status responses with nested state};
 }
 
 done_testing;
