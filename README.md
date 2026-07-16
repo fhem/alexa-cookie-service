@@ -7,6 +7,8 @@ speichert den kompletten Registrierungszustand persistent unter `/data`,
 liefert Cookie-Exportdaten per HTTP und kann bestehende Cookies zyklisch oder
 per API refreshen. Die empfohlene FHEM-Integration holt den Export ab, schreibt
 ihn lokal im FHEM-Container und triggert danach den Import in `echodevice`.
+Fuer den sicheren Standardbetrieb sollte `TLS_ENABLED=true` gesetzt sein,
+besonders wenn FHEM und `alexa-cookie-service` nicht auf demselben Host laufen.
 `save=<filename>` bleibt nur als Legacy-Kompatibilitätsoption erhalten.
 
 ## Schnellstart mit HTTPMOD
@@ -20,19 +22,49 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    <summary>Details und Links</summary>
 
    Der `alexa-cookie-service`-Container muss laufen und die Login-URL im Browser erreichbar sein.
+   Der Code-Default bleibt rueckwaertsvertraeglich bei `TLS_ENABLED=false`,
+   dokumentiert und empfohlen ist aber `TLS_ENABLED=true` fuer den normalen Betrieb.
+   Das gilt besonders dann, wenn FHEM und der Service auf getrennten Hosts laufen.
    Im typischen Docker-Setup reicht dieses Minimalbeispiel:
 
    ```yaml
    services:
      alexa-cookie-service:
-       image: ghcr.io/fhem/alexa-cookie-service:0.3.1
+       image: ghcr.io/fhem/alexa-cookie-service:0.3.5
        environment:
          AUTH_TOKEN: change-me
+         TLS_ENABLED: "true"
          PROXY_PUBLIC_HOST: 192.168.178.10
        ports:
          - "58090:58090"
        restart: unless-stopped
    ```
+
+   Wenn du ein extern bereitgestelltes Leaf-Zertifikat verwenden willst, sieht
+   die Service-Konfiguration eher so aus:
+
+   ```yaml
+   services:
+     alexa-cookie-service:
+       image: ghcr.io/fhem/alexa-cookie-service:0.3.5
+       environment:
+         AUTH_TOKEN: change-me
+         TLS_ENABLED: "true"
+         TLS_SERVER_CERT_MODE: external
+         TLS_SERVER_NAME: acs.example.internal
+         TLS_SERVER_KEY_FILE: /data/tls/server.key
+         TLS_SERVER_CERT_FILE: /data/tls/server.crt
+         PROXY_PUBLIC_HOST: 192.168.178.10
+       volumes:
+         - ./leaf/server.key:/data/tls/server.key:ro
+         - ./leaf/server.crt:/data/tls/server.crt:ro
+       ports:
+         - "58090:58090"
+       restart: unless-stopped
+   ```
+
+   In diesem Fall muss FHEM die CA oder Chain des Leaf-Zertifikats kennen; ein
+   passendes `sslArgs`-Beispiel steht weiter unten.
 
    `COOKIE_EXPORT_DIR` brauchst du nur noch, wenn du den Legacy-Pfad mit
    `save=<filename>` weiter nutzen willst.
@@ -58,17 +90,28 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
    Das fertige Beispiel liegt in [scripts/example_fhem_httpmod_package.cfg](./scripts/example_fhem_httpmod_package.cfg).
 
    Für den empfohlenen Pfad brauchst du:
-   - den Status-Endpunkt `http://alexa-cookie-service:58080/api/status`, der bei veraltetem Zustand vor der Antwort automatisch einen Refresh ausloest
+   - den Status-Endpunkt `https://alexa-cookie-service:58080/api/status`, der bei veraltetem Zustand vor der Antwort automatisch einen Refresh ausloest
    - `get exportCookie` auf `/api/cookie`
    - `set refresh` auf `/api/cookie/refresh`
    - eine lokale FHEM-Callback-Funktion, die den JSON-Body mit `write_cookie_export_and_trigger_import` in das lokale Exportverzeichnis schreibt
    - das Reading `proxyUrl` für die Browser-URL
    - das Reading `message` für die Login-Meldung
    - das Reading `error` für Fehlerzustände
+   - eine `sslArgs`-Konfiguration, die der FHEM-Instanz die CA-Datei des Services vertraut macht
 
    Optional hilfreich:
    - `get loginUrl` für die direkte Proxy-URL
    - `save=<filename>` bleibt als Legacy-Option auf der Service-Seite erhalten
+   - `sslArgs` mit einer lesbaren CA-Datei statt deaktivierter Zertifikatspruefung
+
+   Wenn FHEM und der Service nicht denselben Host teilen, kopiere oder mounte die vom Service erzeugte CA-Datei aus `/data/tls/ca.crt` in einen Pfad, den FHEM lesen kann. Ein konkretes Beispiel ist ein Read-only-Bind-Mount auf `/opt/fhem/ssl/alexa-cookie-service-ca.crt`.
+   Für ein extern bereitgestelltes Leaf-Zertifikat kannst du stattdessen die ausstellende CA oder Chain mounten und FHEM so konfigurieren:
+
+   ```text
+   attr AlexaCookieService sslArgs SSL_ca_file=/opt/fhem/ssl/acs-leaf-ca.crt,SSL_verify_mode=1
+   ```
+
+   Ein passendes Compose-Beispiel für die FHEM-Seite ist weiter unten in der eigenen CA-Variante gezeigt.
 
    </details>
 
@@ -127,6 +170,185 @@ sind abgekündigt.
 
 Die relevanten Container-Parameter sind bereits im Schnellstart beschrieben.
 Falls du nur die Defaults anpassen willst, nutze die Tabelle unten als Referenz.
+Der dokumentierte sichere Standard ist `TLS_ENABLED=true`; `TLS_ENABLED=false`
+bleibt nur als Rueckwaertskompatibilitaets-Default im Code erhalten.
+
+## TLS-Konfiguration
+
+### Standard TLS
+
+Das ist der empfohlene Standardfall fuer neue Installationen.
+
+- `TLS_ENABLED=true`
+- der Service erzeugt unter `TLS_DIR` eine lokale CA
+- die CA wird standardmaessig in `/data/tls/ca.crt` gespeichert
+- das Serverzertifikat wird fuer den konfigurierten Servicenamen ausgestellt
+- FHEM sollte der lokalen CA ueber `sslArgs` vertrauen statt die Pruefung abzuschalten
+
+Typische Konfiguration im Service:
+
+```yaml
+environment:
+  TLS_ENABLED: "true"
+  DATA_DIR: /data
+```
+
+Typische FHEM-Seite:
+
+```text
+attr AlexaCookieService sslArgs SSL_ca_file=/opt/fhem/ssl/alexa-cookie-service-ca.crt,SSL_verify_mode=1
+```
+
+Compose-Anpassungen fuer diese Variante:
+
+ACS-Container:
+
+```yaml
+services:
+  alexa-cookie-service:
+    environment:
+      TLS_ENABLED: "true"
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+```
+
+FHEM-Container:
+
+```yaml
+services:
+  fhem:
+    volumes:
+      - ./data/tls/ca.crt:/opt/fhem/ssl/alexa-cookie-service-ca.crt:ro
+```
+
+Wenn FHEM und der Service nicht denselben Host teilen, kopiere oder mounte
+`/data/tls/ca.crt` an einen lesbaren Pfad in FHEM, zum Beispiel als
+Read-only-Bind-Mount auf `/opt/fhem/ssl/alexa-cookie-service-ca.crt`.
+
+### Eigene Root-CA
+
+Diese Variante ist fuer Umgebungen gedacht, in denen du bereits eine eigene
+Root-CA verwaltest und FHEM dieser CA ohnehin vertraut.
+
+- `TLS_ENABLED=true`
+- `TLS_CA_KEY_FILE` und `TLS_CA_CERT_FILE` zeigen auf deine Root-CA
+- `TLS_SERVER_KEY_FILE` und `TLS_SERVER_CERT_FILE` bestimmen die Leaf-Dateien
+- `TLS_SERVER_NAME` sollte auf den DNS-Namen zeigen, den FHEM wirklich anspricht
+- der Service stellt das Serverzertifikat aus deiner CA selbst aus
+- FHEM vertraut derselben Root-CA oder einer daraus abgeleiteten CA-Chain
+
+Beispiel fuer eine eingebundene Root-CA im Service-Container:
+
+```yaml
+services:
+  alexa-cookie-service:
+    environment:
+      TLS_ENABLED: "true"
+      TLS_CA_KEY_FILE: /data/tls/root-ca.key
+      TLS_CA_CERT_FILE: /data/tls/root-ca.crt
+      TLS_SERVER_KEY_FILE: /data/tls/server.key
+      TLS_SERVER_CERT_FILE: /data/tls/server.crt
+    volumes:
+      - ./data:/data
+      - ./root-ca/root-ca.key:/data/tls/root-ca.key:ro
+      - ./root-ca/root-ca.crt:/data/tls/root-ca.crt:ro
+```
+
+FHEM-Container:
+
+```yaml
+services:
+  fhem:
+    volumes:
+      - ./root-ca/root-ca.crt:/opt/fhem/ssl:ro
+```
+
+Wenn du die Root-CA ausserhalb des Containers verwaltest, mounte nur die
+oeffentliche CA-Datei in FHEM und verwende sie in `sslArgs`:
+
+```text
+attr AlexaCookieService sslArgs SSL_ca_file=/opt/fhem/ssl/root-ca.crt,SSL_verify_mode=1
+```
+
+Die private Root-CA-Schluesseldatei muss in diesem Fall nur dem Service
+zugreifbar sein, wenn der Service das Serverzertifikat selbst ausstellen soll.
+FHEM braucht dafuer nur die oeffentliche CA-Datei.
+
+### Bereitgestelltes Serverzertifikat
+
+Diese Variante ist fuer Faelle gedacht, in denen du das Leaf-Zertifikat
+extern erzeugst und ACS nur die fertigen Dateien bereitstellt.
+
+- `TLS_ENABLED=true`
+- `TLS_SERVER_CERT_MODE=external`
+- `TLS_SERVER_KEY_FILE` und `TLS_SERVER_CERT_FILE` zeigen auf die extern
+  bereitgestellten Leaf-Dateien
+- ACS erzeugt in diesem Modus keine lokale CA und stellt das Zertifikat nicht
+  selbst aus
+- FHEM vertraut weiterhin der ausstellenden CA oder der Chain; bei einem
+  explizit self-signed Leaf kann auch das Leaf-Zertifikat selbst als Trust-
+  Anker dienen, das ist aber nur ein Spezialfall
+
+Beispiel mit extern bereitgestelltem Leaf-Zertifikat:
+
+```yaml
+services:
+  alexa-cookie-service:
+    environment:
+      TLS_ENABLED: "true"
+      TLS_SERVER_CERT_MODE: external
+      TLS_SERVER_NAME: acs.example.internal
+      TLS_SERVER_KEY_FILE: /data/tls/server.key
+      TLS_SERVER_CERT_FILE: /data/tls/server.crt
+    volumes:
+      - ./leaf/server.key:/data/tls/server.key:ro
+      - ./leaf/server.crt:/data/tls/server.crt:ro
+```
+
+### Private CA ausserhalb des Containers
+
+Diese Variante ist fuer Betreiber gedacht, die ihre Root- oder Intermediate-CA
+separat erzeugen und verwalten und ACS nur die fertigen PKI-Materialien
+bereitstellen.
+
+- die private CA bleibt ausserhalb von FHEM und idealerweise auch ausserhalb
+  des normalen Betriebs-Containers
+- ACS erhaelt nur den privaten CA-Key und das zugehoerige CA-Zertifikat, damit
+  es das Serverzertifikat signieren kann
+- FHEM bekommt nur das oeffentliche CA-Zertifikat oder die CA-Chain-Datei
+- wenn du eine Intermediate-CA nutzt, kannst du den Root-Key komplett aus dem
+  ACS-Container heraushalten
+- das Verfahren ist funktional identisch zu `Eigene Root-CA`, aber die
+  Schluesselverwaltung bleibt bei deiner PKI
+
+Beispiel mit extern erzeugter privater CA:
+
+```yaml
+services:
+  alexa-cookie-service:
+    environment:
+      TLS_ENABLED: "true"
+      TLS_CA_KEY_FILE: /data/tls/private-ca.key
+      TLS_CA_CERT_FILE: /data/tls/private-ca.crt
+      TLS_SERVER_KEY_FILE: /data/tls/server.key
+      TLS_SERVER_CERT_FILE: /data/tls/server.crt
+    volumes:
+      - ./data:/data
+      - ./private-ca/private-ca.key:/data/tls/private-ca.key:ro
+      - ./private-ca/private-ca.crt:/data/tls/private-ca.crt:ro
+
+  fhem:
+    volumes:
+      - ./private-ca/private-ca.crt:/opt/fhem/ssl/private-ca.crt:ro
+```
+
+Dann muss die FHEM-Seite wieder explizit dieser CA vertrauen:
+
+```text
+attr AlexaCookieService sslArgs SSL_ca_file=/opt/fhem/ssl/private-ca.crt,SSL_verify_mode=1
+```
+
 
 ## Datenhaltung
 
@@ -141,6 +363,8 @@ Für den empfohlenen FHEM-Flow gilt:
 - `GET /api/cookie` liefert die Export-JSON im Response.
 - FHEM schreibt diese JSON lokal in die Datei, die `echodevice` erwartet.
 - Danach kann der vorhandene `echodevice_NPMWaitForCookie($hash)`-Pfad ausgelöst werden.
+- Bei TLS-Betrieb muss FHEM der lokalen CA vertrauen, statt die Pruefung abzuschalten.
+- Wenn ACS und FHEM getrennt laufen, lege den CA-Pfad vorab fest und mache `/data/tls/ca.crt` für FHEM lesbar.
 
 Legacy-Kompatibilität:
 
@@ -226,7 +450,9 @@ Andere Beispielpfade wie `at`/`notify`-Fragmente oder Shell-Skripte werden nicht
 
 - Die REST-API liefert Geheimnisse. Setze `AUTH_TOKEN`.
 - Stelle den Service idealerweise nur im internen Netz bereit.
-- Nutze bei Remote-Zugriff einen Reverse Proxy mit TLS und zusätzlicher Authentifizierung.
+- Nutze `TLS_ENABLED=true` als dokumentierten Standardbetrieb, besonders wenn FHEM und der Service getrennt laufen.
+- Stelle sicher, dass FHEM die CA-Datei lesen kann und die Zertifikatspruefung aktiviert bleibt.
+- Ein Reverse Proxy kann zusaetzlich sinnvoll sein, ersetzt aber keine klare TLS-Konfiguration im Service.
 - Lege `/data` auf ein persistentes Volume.
 
 ## Bekannte Grenzen
@@ -239,7 +465,7 @@ Andere Beispielpfade wie `at`/`notify`-Fragmente oder Shell-Skripte werden nicht
 
 Für getrennte Hosts oder Deployments ohne Shared Volume ist der empfohlene Ablauf:
 
-1. `GET /api/status` aus FHEM aufrufen, damit der Servicezustand bei Bedarf automatisch per Refresh aktualisiert wird.
+1. `GET /api/status` aus FHEM ueber die HTTPS-URL aufrufen, damit der Servicezustand bei Bedarf automatisch per Refresh aktualisiert wird.
 2. `GET /api/cookie` abrufen.
 3. Die Response lokal in die von `echodevice` erwartete Datei schreiben.
 4. `echodevice_NPMWaitForCookie($hash)` aus dem FHEM-seitigen Code triggern.

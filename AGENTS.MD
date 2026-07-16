@@ -1,0 +1,3 @@
+- Für jedes erzeugte Feature muss ein Featurebranch erstellt werden.
+- Bei jedem Feature muss die Versionsangabe gemäß semver im Projekt erhöht werden.
+- Commits direkt in main/master sind unzulässig.

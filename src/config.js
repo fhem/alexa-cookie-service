@@ -14,6 +14,7 @@ function envInt(name, defaultValue) {
 }
 
 const dataDir = process.env.DATA_DIR || '/data';
+const tlsDir = process.env.TLS_DIR || path.join(dataDir, 'tls');
 
 module.exports = {
   host: process.env.HOST || '0.0.0.0',
@@ -21,6 +22,17 @@ module.exports = {
   logLevel: process.env.LOG_LEVEL || 'combined',
   timeZone: process.env.TZ || 'UTC',
   authToken: process.env.AUTH_TOKEN || '',
+  tlsEnabled: envBool('TLS_ENABLED', false),
+  tlsDir,
+  tlsServerCertMode: (process.env.TLS_SERVER_CERT_MODE || 'managed').toLowerCase(),
+  tlsServerName: process.env.TLS_SERVER_NAME || 'alexa-cookie-service',
+  tlsCaDays: envInt('TLS_CA_DAYS', 3650),
+  tlsCertDays: envInt('TLS_CERT_DAYS', 365),
+  tlsRenewBeforeDays: envInt('TLS_RENEW_BEFORE_DAYS', 30),
+  tlsCaKeyFile: process.env.TLS_CA_KEY_FILE || path.join(tlsDir, 'ca.key'),
+  tlsCaCertFile: process.env.TLS_CA_CERT_FILE || path.join(tlsDir, 'ca.crt'),
+  tlsServerKeyFile: process.env.TLS_SERVER_KEY_FILE || path.join(tlsDir, 'server.key'),
+  tlsServerCertFile: process.env.TLS_SERVER_CERT_FILE || path.join(tlsDir, 'server.crt'),
   dataDir,
   stateFile: process.env.STATE_FILE || path.join(dataDir, 'alexa-registration.json'),
   metadataFile: process.env.METADATA_FILE || path.join(dataDir, 'service-metadata.json'),

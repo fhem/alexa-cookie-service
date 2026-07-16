@@ -4,10 +4,19 @@ services:
     container_name: alexa-cookie-service
     volumes:
       - ./data:/data
+      # External leaf example:
+      # - ./leaf/server.key:/data/tls/server.key:ro
+      # - ./leaf/server.crt:/data/tls/server.crt:ro
     env_file:
       - .env
     environment:
       COOKIE_EXPORT_DIR: /data/cookie-export
+      TLS_ENABLED: "true"
+      # External leaf example:
+      # TLS_SERVER_CERT_MODE: external
+      # TLS_SERVER_NAME: acs.example.internal
+      # TLS_SERVER_KEY_FILE: /data/tls/server.key
+      # TLS_SERVER_CERT_FILE: /data/tls/server.crt
     ports:
       - "58080:58080"
       - "58090:58090"
