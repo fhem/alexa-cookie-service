@@ -14,7 +14,7 @@
     "test": "prove -Ilib t && node --test test/*.test.js"
   },
   "dependencies": {
-    "alexa-cookie2": "^5.0.5",
+    "alexa-cookie2": "^5.0.6",
     "express": "^5.2.1",
     "helmet": "^8.3.0",
     "morgan": "^1.11.0"
