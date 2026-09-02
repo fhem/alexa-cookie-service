@@ -164,6 +164,7 @@ function ensureCaMaterial(tlsDir, { caCommonName = DEFAULT_CA_COMMON_NAME, caDay
   const { tempDir, filePath: configPath } = writeTempConfig('acs-ca-', buildCaConfig(caCommonName));
   try {
     runOpenSsl(['genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:4096', '-out', caKeyPath]);
+    fs.chmodSync(caKeyPath, 0o600);
     runOpenSsl([
       'req',
       '-x509',
@@ -176,7 +177,6 @@ function ensureCaMaterial(tlsDir, { caCommonName = DEFAULT_CA_COMMON_NAME, caDay
       '-config', configPath,
       '-extensions', 'v3_ca'
     ]);
-    fs.chmodSync(caKeyPath, 0o600);
     return { caKeyPath, caCertPath };
   } finally {
     cleanupTempDir(tempDir);
@@ -201,6 +201,7 @@ function generateServerMaterial({ tlsDir, serverName, certDays, caKeyPath, caCer
 
   try {
     runOpenSsl(['genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:2048', '-out', serverKeyPath]);
+    fs.chmodSync(serverKeyPath, 0o600);
     runOpenSsl([
       'req',
       '-new',
@@ -222,7 +223,6 @@ function generateServerMaterial({ tlsDir, serverName, certDays, caKeyPath, caCer
       '-extfile', configPath,
       '-extensions', 'v3_server'
     ]);
-    fs.chmodSync(serverKeyPath, 0o600);
     return { serverKeyPath, serverCertPath };
   } finally {
     try {
