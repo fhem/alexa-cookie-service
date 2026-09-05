@@ -5,6 +5,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+!.devcontainer/.env.local.example
 
 # Runtime data
 data/
@@ -21,6 +22,10 @@ build/
 .DS_Store
 .idea/
 .vscode/
+!.vscode/
+!.vscode/tasks.json
 
 # Git metadata from exported archives or nested checkouts
 .git/
+.devcontainer/compose.local.yml
+.devcontainer/.env.local

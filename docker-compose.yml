@@ -1,13 +1,25 @@
 services:
   alexa-cookie-service:
-    image: ghcr.io/fhem/alexa-cookie-service:0.3.5
+    image: ghcr.io/fhem/alexa-cookie-service:0.4.3
     container_name: alexa-cookie-service
     volumes:
       - ./data:/data
+      # External leaf example:
+      # - ./leaf/server.key:/data/tls/server.key:ro
+      # - ./leaf/server.crt:/data/tls/server.crt:ro
+      # - ./leaf/ca.crt:/data/tls/external-ca.crt:ro # private CA only
     env_file:
       - .env
     environment:
       COOKIE_EXPORT_DIR: /data/cookie-export
+      TLS_ENABLED: "true"
+      HEALTHCHECK_HOST: 127.0.0.1
+      # External leaf example:
+      # TLS_SERVER_CERT_MODE: external
+      # TLS_SERVER_NAME: acs.example.internal
+      # TLS_SERVER_KEY_FILE: /data/tls/server.key
+      # TLS_SERVER_CERT_FILE: /data/tls/server.crt
+      # TLS_CA_CERT_FILE: /data/tls/external-ca.crt # private CA only
     ports:
       - "58080:58080"
       - "58090:58090"

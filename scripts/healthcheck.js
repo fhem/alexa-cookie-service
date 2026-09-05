@@ -1,15 +1,31 @@
+const fs = require('fs');
 const http = require('http');
+const https = require('https');
+const path = require('path');
 
+const tlsEnabled = ['1', 'true', 'yes', 'on'].includes(String(process.env.TLS_ENABLED || '').toLowerCase());
+const tlsDir = process.env.TLS_DIR || path.join(process.env.DATA_DIR || '/data', 'tls');
+const tlsServerCertMode = String(process.env.TLS_SERVER_CERT_MODE || 'managed').toLowerCase();
 const port = process.env.PORT || 58080;
-const host = process.env.HOST || '127.0.0.1';
+const host = process.env.HEALTHCHECK_HOST || '127.0.0.1';
+const agentOptions = {};
+if (tlsEnabled) {
+  const tlsCaCertFile = process.env.TLS_CA_CERT_FILE ||
+    (tlsServerCertMode === 'managed' ? path.join(tlsDir, 'ca.crt') : undefined);
+  if (tlsCaCertFile) {
+    agentOptions.ca = fs.readFileSync(tlsCaCertFile);
+  }
+}
+const client = tlsEnabled ? https : http;
 
-const req = http.request(
+const req = client.request(
   {
     host,
     port,
     path: '/healthz',
     method: 'GET',
-    timeout: 5000
+    timeout: 5000,
+    ...agentOptions
   },
   (res) => {
     if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {

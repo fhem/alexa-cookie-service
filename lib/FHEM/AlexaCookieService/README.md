@@ -11,9 +11,11 @@ in this repository state.
 
 The packages are designed so that a future FHEM device module and a possible
 future `37_echodevice.pm` integration can share the same HTTP, state and import
-logic. The preferred flow is to fetch the export JSON over HTTP, write it
+logic. The preferred flow is to fetch the export JSON over HTTPS, write it
 locally in FHEM and then trigger the existing import path. `save=<filename>`
-remains available only as a legacy compatibility option.
+remains available only as a legacy compatibility option. For the secure
+default operating mode, the service should run with `TLS_ENABLED=true`,
+especially when FHEM and `alexa-cookie-service` do not share a host.
 
 ## Packages
 
@@ -33,7 +35,7 @@ Supported request builders:
 
 Constructor options:
 
-- `base_url`: service base URL, defaults to `http://alexa-cookie-service:58080`
+- `base_url`: service base URL, defaults to `http://alexa-cookie-service:58080`; use `https://...` when TLS is enabled
 - `token`: optional auth token sent as `x-auth-token`
 - `timeout`: request timeout in seconds, defaults to `30`
 
@@ -43,7 +45,7 @@ Example:
 use FHEM::AlexaCookieService::Client;
 
 my $client = FHEM::AlexaCookieService::Client->new(
-  base_url => 'http://alexa-cookie-service:58080',
+  base_url => 'https://alexa-cookie-service:58080',
   token    => 'change-me',
   timeout  => 30,
 );

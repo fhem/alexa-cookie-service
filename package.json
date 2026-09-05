@@ -1,6 +1,6 @@
 {
   "name": "alexa-cookie-service",
-  "version": "0.3.5",
+  "version": "0.4.3",
   "description": "REST service and Docker wrapper around alexa-cookie for FHEM echodevice",
   "main": "src/server.js",
   "type": "commonjs",

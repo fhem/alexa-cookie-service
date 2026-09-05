@@ -1,5 +1,6 @@
 const express = require('express');
 const helmet = require('helmet');
+const https = require('https');
 const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
@@ -9,6 +10,7 @@ const { readJson, writeJson, ensureDirForFile } = require('./store');
 const { startAlexaCookieFlow, refreshAlexaCookie, stopProxyServer } = require('./alexa');
 const { buildLoginFlowResponse } = require('./login-flow');
 const { ensureDir } = require('./fs-utils');
+const { ensureTlsMaterial } = require('./tls');
 
 ensureDirForFile(config.stateFile);
 ensureDirForFile(config.metadataFile);
@@ -417,11 +419,52 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-app.listen(config.port, config.host, () => {
-  logger.info(`alexa-cookie-service listening on ${config.host}:${config.port}`);
-  if (!config.proxyPublicHost) {
-    logger.warn('PROXY_PUBLIC_HOST is empty. Manual login flows may fail or generate unusable proxy URLs.');
+function startServer() {
+  const protocol = config.tlsEnabled ? 'https' : 'http';
+  const onListen = () => {
+    logger.info(`alexa-cookie-service listening on ${protocol}://${config.host}:${config.port}`);
+    if (config.tlsEnabled) {
+      logger.info(`TLS material uses ${config.tlsDir}`);
+    }
+    if (!config.proxyPublicHost) {
+      logger.warn('PROXY_PUBLIC_HOST is empty. Manual login flows may fail or generate unusable proxy URLs.');
+    }
+    logger.info(`Log timestamps use timezone ${config.timeZone}`);
+    scheduleRefreshLoop();
+  };
+
+  if (config.tlsEnabled) {
+    const tlsMaterial = ensureTlsMaterial({
+      tlsDir: config.tlsDir,
+      serverName: config.tlsServerName,
+      certDays: config.tlsCertDays,
+      renewBeforeDays: config.tlsRenewBeforeDays,
+      caDays: config.tlsCaDays,
+      caKeyFile: config.tlsCaKeyFile,
+      caCertFile: config.tlsCaCertFile,
+      serverKeyFile: config.tlsServerKeyFile,
+      serverCertFile: config.tlsServerCertFile,
+      serverCertMode: config.tlsServerCertMode,
+      logger
+    });
+    const server = https.createServer({
+      key: tlsMaterial.key,
+      cert: tlsMaterial.cert
+    }, app);
+    server.on('error', (error) => {
+      logger.error('HTTPS server failed to start:', error.message);
+      process.exitCode = 1;
+    });
+    server.listen(config.port, config.host, onListen);
+    return server;
   }
-  logger.info(`Log timestamps use timezone ${config.timeZone}`);
-  scheduleRefreshLoop();
-});
+
+  const server = app.listen(config.port, config.host, onListen);
+  server.on('error', (error) => {
+    logger.error('HTTP server failed to start:', error.message);
+    process.exitCode = 1;
+  });
+  return server;
+}
+
+startServer();

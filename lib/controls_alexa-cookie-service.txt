@@ -1,3 +1,3 @@
 UPD 2026-06-14_00:58:17 2417 FHEM/AlexaCookieService/Client.pm
-UPD 2026-06-20_00:05:45 4051 FHEM/AlexaCookieService/EchodeviceImport.pm
+UPD 2026-09-05_10:14:13 5322 FHEM/AlexaCookieService/EchodeviceImport.pm
 UPD 2026-06-14_00:58:17 1843 FHEM/AlexaCookieService/State.pm
