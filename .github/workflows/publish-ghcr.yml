@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   packages: write
+  security-events: write
 
 env:
   REGISTRY: ghcr.io
@@ -65,3 +66,35 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Determine scan image reference
+        id: scan-ref
+        shell: bash
+        run: |
+          FIRST_TAG="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n1)"
+          echo "ref=${FIRST_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run Trivy image scan (console output)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - name: Run Trivy image scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: sarif
+          output: trivy-image-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image-results.sarif
+          category: trivy-image
