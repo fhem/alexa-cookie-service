@@ -8,8 +8,10 @@
     "dependencies"
   ],
   "rangeStrategy": "bump",
+  "bumpVersion": "patch",
   "lockFileMaintenance": {
-    "enabled": true
+    "enabled": true,
+    "bumpVersion": "patch"
   },
   "packageRules": [
     {
