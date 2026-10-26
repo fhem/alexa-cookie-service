@@ -22,6 +22,7 @@ sub normalize_status {
     hasCsrf         => $status->{hasCsrf} ? 1 : 0,
     hasRefreshToken => $status->{hasRefreshToken} ? 1 : 0,
     amazonPage      => $status->{amazonPage},
+    refreshMinAgeHours => $status->{refreshMinAgeHours},
   };
 }
 
@@ -58,6 +59,7 @@ sub readings_from_status {
     csrf_available      => $normalized->{hasCsrf} ? '1' : '0',
     refresh_available   => $normalized->{hasRefreshToken} ? '1' : '0',
     amazon_page         => $normalized->{amazonPage} || q{},
+    service_refresh_min_age_hours => defined $normalized->{refreshMinAgeHours} ? $normalized->{refreshMinAgeHours} : q{},
   };
 }
 

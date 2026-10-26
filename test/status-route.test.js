@@ -41,6 +41,7 @@ test('api/status accepts POST as well as GET', async () => {
     PORT: '58123',
     HOST: '127.0.0.1',
     AUTH_TOKEN: 'test-token',
+    REFRESH_MIN_AGE_HOURS: '6',
     DATA_DIR: path.join(tmpDir, 'data'),
     STATE_FILE: path.join(tmpDir, 'data', 'state.json'),
     METADATA_FILE: path.join(tmpDir, 'data', 'metadata.json'),
@@ -85,6 +86,7 @@ test('api/status accepts POST as well as GET', async () => {
     });
     assert.equal(getResponse.statusCode, 200);
     assert.match(getResponse.body, /"ok":/);
+    assert.equal(JSON.parse(getResponse.body).refreshMinAgeHours, 6);
 
     const postResponse = await request('POST', 'http://127.0.0.1:58123/api/status', {
       'x-auth-token': 'test-token',

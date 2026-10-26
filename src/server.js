@@ -164,6 +164,7 @@ function getStatus() {
     hasCsrf: Boolean(state?.csrf),
     hasRefreshToken: Boolean(state?.refreshToken),
     amazonPage: config.amazonPage,
+    refreshMinAgeHours: config.refreshMinAgeHours,
     state: sanitizeState(state)
   };
 }

@@ -147,7 +147,16 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 5. HTTPMOD starten.
 
    Der periodische `GET /api/status`-Aufruf aktualisiert den Servicezustand automatisch, sobald die letzte Aktualisierung aelter als die konfigurierte Mindestgrenze ist.
-   Das `npm_refresh_intervall` im `echodevice` bzw. `HTTPMOD` sollte groesser als der Refresh-Zyklus des Containers konfiguriert werden; sonst kann der Client vor der naechsten gueltigen Aktualisierung erneut pollen und auf die Mindestalter-Pruefung laufen.
+   Das HTTPMOD-Intervall (Beispiel: 3600 s) taktet nur den leichten Statusabruf. Der Service refresht erst, wenn der Zustand aelter als `REFRESH_MIN_AGE_HOURS` ist (Standard 6 h).
+   `get03PollDelay` (in Sekunden, Beispiel: 21600) begrenzt, wie oft der Export abgeholt und in `echodevice` importiert wird. Die `x<n>`-Schreibweise aus der HTTPMOD-Commandref wertet HTTPMOD derzeit als 0 aus, daher immer Sekunden verwenden.
+   Am `echodevice`-Account-Device (nicht am HTTPMOD) sollte `npm_refresh_intervall` sehr hoch gesetzt werden, zum Beispiel `attr AlexaAccount npm_refresh_intervall 2592000`. Im ACS-Setup gibt es keinen lokalen NPM-Refresh; wird der Wert unterschritten, versucht `echodevice` ihn trotzdem und schreibt Fehler ins Log.
+   Das HTTPMOD-`timeout` sollte mindestens 60 s betragen, weil `GET /api/status` den Refresh synchron ausfuehrt.
+   Ob diese Werte zusammenpassen, zeigt das Reading `interval_check` (`ok`, `warning: <Codes>` oder `error: <Codes>`). Die Details liefert in FHEM:
+
+   ```text
+   {FHEM::AlexaCookieService::IntervalCheck::report_for_devices("AlexaCookieService","AlexaAccount")}
+   ```
+
    `set AlexaCookieService refresh` bleibt als manueller Fallback erhalten, ist fuer den normalen Polling-Betrieb aber nicht mehr noetig.
    Der anschließende `get exportCookie`-Aufruf liefert das Cookie-JSON, das die lokale FHEM-Hilfsfunktion in die Datei schreibt und danach in `echodevice` importiert.
 
@@ -162,7 +171,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 ## Wichtige Endpunkte
 
 - `GET /healthz` – Liveness-Check, liefert immer 200 wenn der Prozess laeuft
-- `GET /api/status` – Status ohne Geheimnisse, fuer Readiness und Login-Zustand
+- `GET /api/status` – Status ohne Geheimnisse, fuer Readiness und Login-Zustand (inklusive `refreshMinAgeHours` fuer die Intervallpruefung)
 - `GET /api/state` – gespeicherter Zustand, standardmäßig maskiert
 - `GET /api/state?raw=1` – kompletter gespeicherter Zustand
 - `POST /api/cookie/login/start` – startet den Login-/Proxy-Flow
