@@ -133,6 +133,38 @@ $error = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export_and_tri
 return $error if $error;
 ```
 
+### `FHEM::AlexaCookieService::IntervalCheck`
+
+Checks that the polling settings fit together: the HTTPMOD define interval,
+`get<n>PollDelay` of `exportCookie`, the HTTPMOD `timeout`, the `echodevice`
+attribute `npm_refresh_intervall` and the service's `REFRESH_MIN_AGE_HOURS`
+(reported by `GET /api/status` as `refreshMinAgeHours`).
+
+Useful functions:
+
+- `check_intervals(%args)` -> arrayref of findings (`level`, `code`, `message`);
+  arguments are `interval`, `poll_delay`, `export_polled`, `timeout`,
+  `npm_refresh_intervall` and `refresh_min_age_hours`
+- `overall_level($findings)`, `summary($findings)`, `report($findings)`
+- `check_for_devices($httpmod, $echodevice, %extra)`,
+  `summary_for_devices(...)`, `report_for_devices(...)` read the settings from
+  the FHEM devices; `refresh_min_age_hours` comes from the HTTPMOD reading
+  `service_refresh_min_age_hours` unless passed in `%extra`
+
+Findings have the level `error`, `warning` or `info`; only `error` and
+`warning` change the overall level. Codes: `INTERVAL_INVALID`,
+`POLLDELAY_INVALID`, `POLLDELAY_X_FORM`, `POLLDELAY_REDUNDANT`,
+`EXPORT_NOT_POLLED`, `EXPORT_MORE_OFTEN_THAN_REFRESH`,
+`SERVICE_VALUES_UNKNOWN`, `NPM_REFRESH_UNSET`, `NPM_REFRESH_TOO_LOW`,
+`NPM_REFRESH_BELOW_RECOMMENDED` and `TIMEOUT_LOW`.
+
+Example:
+
+```perl
+print FHEM::AlexaCookieService::IntervalCheck::report_for_devices(
+  'AlexaCookieService', 'AlexaAccount');
+```
+
 ## Current Integration Shape
 
 The intended flow for an external refresh is:

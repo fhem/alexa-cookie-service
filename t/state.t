@@ -13,6 +13,7 @@ my $status = FHEM::AlexaCookieService::State::normalize_status({
   hasCsrf         => 0,
   hasRefreshToken => 1,
   amazonPage      => 'amazon.de',
+  refreshMinAgeHours => 6,
   state           => { localCookie => '<redacted>' },
 });
 
@@ -24,6 +25,7 @@ is_deeply $status, {
   hasCsrf         => 0,
   hasRefreshToken => 1,
   amazonPage      => 'amazon.de',
+  refreshMinAgeHours => 6,
 }, 'status normalization keeps public status fields only';
 
 is_deeply FHEM::AlexaCookieService::State::normalize_status(undef), {}, 'non-hash status normalizes to empty hash';
@@ -74,6 +76,7 @@ is_deeply $readings, {
   csrf_available     => '1',
   refresh_available  => '0',
   amazon_page        => 'amazon.de',
+  service_refresh_min_age_hours => '',
 }, 'readings keep zero age and expose string flags';
 
 done_testing;
