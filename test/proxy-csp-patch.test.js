@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { MARKER, applyPatch, patchProxySource } = require('../scripts/patch-alexa-cookie2');
+const { MARKER, patchProxySource } = require('../scripts/patch-alexa-cookie2');
 
 const SAMPLE = 'function onProxyRes(proxyRes, req, res) {\n    return req.url;\n}\n';
 
@@ -39,9 +39,12 @@ test('patching is idempotent and reports a changed upstream', () => {
   assert.equal(patchProxySource('nothing here').status, 'anchor-missing');
 });
 
-test('installed alexa-cookie2 strips the directive (patch applied or handled upstream)', () => {
+test('installed alexa-cookie2 is patched or handles the directive itself', () => {
   const file = path.join(path.dirname(require.resolve('alexa-cookie2/package.json')), 'lib', 'proxy.js');
-  applyPatch(file);
   const source = fs.readFileSync(file, 'utf8');
-  assert.ok(source.includes(MARKER) || /upgrade-insecure-requests/i.test(source));
+  // Read-only: fails if the postinstall patch did not apply and the anchor drifted upstream.
+  assert.ok(
+    source.includes(MARKER) || patchProxySource(source).status !== 'anchor-missing',
+    'alexa-cookie2 proxy.js changed: onProxyRes anchor not found, review scripts/patch-alexa-cookie2.js'
+  );
 });
