@@ -1,6 +1,6 @@
 {
   "name": "alexa-cookie-service",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "REST service and Docker wrapper around alexa-cookie for FHEM echodevice",
   "main": "src/server.js",
   "type": "commonjs",
@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "postinstall": "node scripts/patch-alexa-cookie2.js",
     "healthcheck": "node scripts/healthcheck.js",
     "test": "prove -Ilib t && node --test test/*.test.js"
   },

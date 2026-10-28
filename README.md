@@ -478,6 +478,12 @@ Andere Beispielpfade wie `at`/`notify`-Fragmente oder Shell-Skripte werden nicht
 - Amazon kann Login-Flows jederzeit ändern.
 - MFA, Captcha und Regionseffekte bleiben möglich.
 - Der initiale Login ist absichtlich browsergestützt; das ist robuster als ein erzwungener Headless-Flow.
+- Der Login-Proxy läuft über HTTP. Amazon sendet `Content-Security-Policy: upgrade-insecure-requests`,
+  wodurch der Browser nach der E-Mail-Eingabe auf `https://<Host>:<Port>/ax/claim` wechselt
+  (`ERR_SSL_PROTOCOL_ERROR`, siehe [Apollon77/alexa-cookie#222](https://github.com/Apollon77/alexa-cookie/issues/222)).
+  Als Workaround entfernt `scripts/patch-alexa-cookie2.js` (npm `postinstall`, im Docker-Build enthalten)
+  genau diese Direktive im Proxy von `alexa-cookie2`. Sobald das Paket den Header selbst behandelt, kann
+  das Skript entfallen.
 
 ## Empfohlener Importfluss
 
