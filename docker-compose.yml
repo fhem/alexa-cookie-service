@@ -1,6 +1,6 @@
 services:
   alexa-cookie-service:
-    image: ghcr.io/fhem/alexa-cookie-service:0.4.5
+    image: ghcr.io/fhem/alexa-cookie-service:0.4.8
     container_name: alexa-cookie-service
     volumes:
       - ./data:/data
