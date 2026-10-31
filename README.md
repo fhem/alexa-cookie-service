@@ -163,7 +163,7 @@ Details siehe hier: https://www.mwinklerblog.de/smarthome/eigene-module/echodevi
 
 - `GET /healthz` – Liveness-Check, liefert immer 200 wenn der Prozess laeuft
 - `GET /api/status` – Status ohne Geheimnisse, fuer Readiness und Login-Zustand
-- `GET /api/state` – gespeicherter Zustand, standardmäßig maskiert
+- `GET /api/state` – gespeicherter Zustand, standardmäßig maskiert (Cookies, Tokens, CSRF, `macDms`, `frc`, `map-md`, Geräte-ID/-Seriennummer und `formerRegistrationData` erscheinen als `<redacted>`; gilt auch für `/api/status` und die Antworten von Login und Refresh)
 - `GET /api/state?raw=1` – kompletter gespeicherter Zustand
 - `POST /api/cookie/login/start` – startet den Login-/Proxy-Flow
 - `GET /api/cookie/login/url` – startet den Login-/Proxy-Flow und liefert die Proxy-URL
