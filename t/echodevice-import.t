@@ -1,6 +1,7 @@
 use strict;
 use warnings;
 
+use FindBin;
 use File::Temp qw(tempdir);
 use File::Spec;
 use JSON::PP qw(decode_json encode_json);
@@ -164,6 +165,42 @@ is $error, "missing echodevice name", "trigger_import_for_device reports missing
   my $status_response = encode_json({ ok => 1, state => $payload });
   FHEM::AlexaCookieService::EchodeviceImport::httpmod_write_cookie_export_and_trigger_import($httpmod_hash, $status_response);
   is_deeply \@adapter_call, [], q{HTTPMOD adapter ignores status responses with nested state};
+}
+
+# echodevice selects the cookie with a greedy regex over the whole document; the written file
+# must yield the current localCookie independent of Perl's per-process hash order.
+{
+  my $good = 'session-id=good; session-id-time=1; ubid-acbde=a; csrf=-123';
+  my $old  = 'session-id=old; session-id-time=2; ubid-main=m; csrf=-999';
+  my $order_payload = {
+    localCookie            => $good,
+    csrf                   => '-123',
+    refreshToken           => 'refresh-token',
+    macDms                 => { adp_token => 'x' },
+    formerRegistrationData => { loginCookie => $old, localCookie => $good, deviceId => 'd' },
+  };
+
+  my $order_dir = File::Spec->catdir($tmpdir, 'order');
+  my $order_target = { NAME => 'EchoOrder', TYPE => 'echodevice', NR => 77 };
+  my $order_json = encode_json($order_payload);
+
+  my @wrong;
+  for my $seed (1 .. 30) {
+    local $ENV{PERL_HASH_SEED} = $seed;
+    local $ENV{PERL_PERTURB_KEYS} = 0;
+    my $lib = File::Spec->catdir($FindBin::Bin, File::Spec->updir, 'lib');
+    my $out = qx{"$^X" "-I$lib" -MFHEM::AlexaCookieService::EchodeviceImport -e 'my \$e = FHEM::AlexaCookieService::EchodeviceImport::write_cookie_export({ NAME => "EchoOrder", TYPE => "echodevice", NR => 77 }, \$ARGV[0], export_dir => \$ARGV[1]); print \$e if defined \$e' '$order_json' '$order_dir'};
+    is $out, q{}, qq{write with PERL_HASH_SEED=$seed succeeds};
+
+    open my $in, '<', "$order_dir/77result.json" or die $!;
+    local $/;
+    my $written = <$in>;
+    close $in;
+
+    $written =~ /"localCookie":".*session-id=(.*?)","?/;
+    push @wrong, $seed if "session-id=$1" ne $good;
+  }
+  is_deeply \@wrong, [], 'echodevice regex selects the current localCookie for every hash order';
 }
 
 done_testing;
