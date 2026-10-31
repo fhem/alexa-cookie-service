@@ -61,14 +61,31 @@ function loadState() {
   return readJson(config.stateFile, null);
 }
 
+// Top-level state fields that must never leave the service through status/state/refresh/login
+// responses: cookies, tokens, the device key material (macDms), registration blobs and the
+// device identifiers. `formerRegistrationData` embeds a full copy of an older state, including
+// its loginCookie. Only /api/cookie (buildEchoDeviceCache) and ?raw=1 on /api/state expose them.
+const REDACTED_STATE_KEYS = [
+  'loginCookie',
+  'localCookie',
+  'cookie',
+  'refreshToken',
+  'accessToken',
+  'csrf',
+  'frc',
+  'map-md',
+  'macDms',
+  'deviceId',
+  'deviceSerial',
+  'formerRegistrationData'
+];
+
 function sanitizeState(state) {
   if (!state) return null;
   const clone = JSON.parse(JSON.stringify(state));
-  if (clone.loginCookie) clone.loginCookie = '<redacted>';
-  if (clone.localCookie) clone.localCookie = '<redacted>';
-  if (clone.cookie) clone.cookie = '<redacted>';
-  if (clone.refreshToken) clone.refreshToken = '<redacted>';
-  if (clone.accessToken) clone.accessToken = '<redacted>';
+  for (const key of REDACTED_STATE_KEYS) {
+    if (clone[key]) clone[key] = '<redacted>';
+  }
   return clone;
 }
 
