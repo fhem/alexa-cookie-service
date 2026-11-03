@@ -10,6 +10,10 @@ const port = process.env.PORT || 58080;
 const host = process.env.HEALTHCHECK_HOST || '127.0.0.1';
 const agentOptions = {};
 if (tlsEnabled) {
+  // Validate the certificate against the service name instead of the connect target, so
+  // certificates without IP:127.0.0.1 in their SAN (e.g. from a private CA) still pass.
+  agentOptions.servername = process.env.HEALTHCHECK_SERVERNAME ||
+    process.env.TLS_SERVER_NAME || 'alexa-cookie-service';
   const tlsCaCertFile = process.env.TLS_CA_CERT_FILE ||
     (tlsServerCertMode === 'managed' ? path.join(tlsDir, 'ca.crt') : undefined);
   if (tlsCaCertFile) {
@@ -35,7 +39,10 @@ const req = client.request(
   }
 );
 
-req.on('error', () => process.exit(1));
+req.on('error', (err) => {
+  console.error(`healthcheck failed: ${err.code || err.message}`);
+  process.exit(1);
+});
 req.on('timeout', () => {
   req.destroy();
   process.exit(1);

@@ -184,6 +184,11 @@ Der interne Container-Healthcheck verbindet sich standardmaessig mit
 `127.0.0.1`. Mit `HEALTHCHECK_HOST` kann dieses Request-Ziel unabhaengig von
 der Bind-Adresse `HOST` angepasst werden. `HOST=0.0.0.0` sollte daher nicht als
 Healthcheck-Ziel verwendet werden.
+Das TLS-Zertifikat wird dabei gegen `TLS_SERVER_NAME` geprueft (nicht gegen
+`127.0.0.1`); `127.0.0.1` muss daher nicht im Zertifikat stehen. Mit
+`HEALTHCHECK_SERVERNAME` kann der gepruefte Name abweichend gesetzt werden.
+Die Fehlerursache eines fehlgeschlagenen Healthchecks (z. B.
+`ERR_TLS_CERT_ALTNAME_INVALID`) steht im Healthcheck-Log von `docker inspect`.
 
 ## TLS-Konfiguration
 
