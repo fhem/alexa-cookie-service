@@ -1,0 +1,15 @@
+# Add-on for compose/tls-external.yml when the certificate was issued by a private CA.
+# The healthcheck uses the CA to verify the certificate.
+#
+# Expected file on the host:
+#   ./leaf/ca.crt  issuing CA or chain
+#
+# Usage (from the repository root):
+#   TLS_SERVER_NAME=acs.example.internal docker compose -f docker-compose.yml \
+#     -f compose/tls-external.yml -f compose/tls-external-private-ca.yml up -d
+services:
+  alexa-cookie-service:
+    environment:
+      TLS_CA_CERT_FILE: /certs/external-ca.crt
+    volumes:
+      - ./leaf/ca.crt:/certs/external-ca.crt:ro

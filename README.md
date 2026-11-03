@@ -195,6 +195,29 @@ Die Fehlerursache eines fehlgeschlagenen Healthchecks (z. B.
 
 ## TLS-Konfiguration
 
+### Fertige Compose-Dateien
+
+Fuer jede TLS-Variante liegt unter [compose/](./compose) eine Override-Datei, die
+zusammen mit der Basis-[docker-compose.yml](./docker-compose.yml) verwendet wird:
+
+| Variante | Datei | Abschnitt |
+| --- | --- | --- |
+| Standard TLS (lokale CA vom Service) | [compose/tls-managed.yml](./compose/tls-managed.yml) | [Standard TLS](#standard-tls) |
+| Eigene Root-/Intermediate-CA, auch extern verwaltet | [compose/tls-custom-ca.yml](./compose/tls-custom-ca.yml) | [Eigene Root-CA](#eigene-root-ca) |
+| Bereitgestelltes Serverzertifikat (oeffentlich vertraute CA) | [compose/tls-external.yml](./compose/tls-external.yml) | [Bereitgestelltes Serverzertifikat](#bereitgestelltes-serverzertifikat) |
+| Zusatz fuer eine private CA beim bereitgestellten Zertifikat | [compose/tls-external-private-ca.yml](./compose/tls-external-private-ca.yml) | dito |
+
+```text
+docker compose -f docker-compose.yml -f compose/tls-managed.yml up -d
+TLS_SERVER_NAME=acs.example.internal docker compose -f docker-compose.yml -f compose/tls-external.yml -f compose/tls-external-private-ca.yml up -d
+```
+
+`TLS_SERVER_NAME` ist bei allen Varianten Pflicht und muss dem Namen entsprechen,
+den FHEM anspricht. Die Dateien setzen ausserdem `HEALTHCHECK_SERVERNAME`, damit der
+Healthcheck trotz `HEALTHCHECK_HOST=127.0.0.1` gegen diesen Namen prueft.
+Die Zertifikatsdateien werden unter `/certs` statt in `/data/tls` eingebunden. Die erwarteten Host-Dateien
+(`./custom-ca/`, `./leaf/`) stehen im Kopf der jeweiligen Datei.
+
 ### Standard TLS
 
 Das ist der empfohlene Standardfall fuer neue Installationen.
