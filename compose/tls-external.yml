@@ -1,0 +1,25 @@
+# TLS variant: externally provided server certificate from a publicly or
+# system-trusted CA. The service only serves the given key/certificate.
+# For a private CA also add compose/tls-external-private-ca.yml.
+#
+# Expected files on the host:
+#   ./leaf/server.key  private key of the server certificate
+#   ./leaf/server.crt  server certificate (include the chain if needed)
+#
+# Usage (from the repository root):
+#   TLS_SERVER_NAME=acs.example.com \
+#     docker compose -f docker-compose.yml -f compose/tls-external.yml up -d
+services:
+  alexa-cookie-service:
+    environment:
+      TLS_ENABLED: "true"
+      TLS_SERVER_CERT_MODE: external
+      # Must match a name in the certificate.
+      TLS_SERVER_NAME: ${TLS_SERVER_NAME:?set TLS_SERVER_NAME to the certificate name}
+      # The base file sets HEALTHCHECK_HOST=127.0.0.1; verify against the certificate name instead.
+      HEALTHCHECK_SERVERNAME: ${TLS_SERVER_NAME}
+      TLS_SERVER_KEY_FILE: /certs/server.key
+      TLS_SERVER_CERT_FILE: /certs/server.crt
+    volumes:
+      - ./leaf/server.key:/certs/server.key:ro
+      - ./leaf/server.crt:/certs/server.crt:ro

@@ -1,0 +1,26 @@
+# TLS variant: own root/intermediate CA. The service signs the server certificate with
+# your CA. Also covers a private CA that is managed outside the container.
+# FHEM only needs the public CA certificate (./custom-ca/ca.crt).
+#
+# Expected files on the host:
+#   ./custom-ca/ca.key   private CA key (service only; prefer an intermediate CA)
+#   ./custom-ca/ca.crt   public CA certificate or chain
+#
+# Usage (from the repository root):
+#   TLS_SERVER_NAME=acs.example.internal \
+#     docker compose -f docker-compose.yml -f compose/tls-custom-ca.yml up -d
+services:
+  alexa-cookie-service:
+    environment:
+      TLS_ENABLED: "true"
+      TLS_SERVER_CERT_MODE: managed
+      TLS_SERVER_NAME: ${TLS_SERVER_NAME:?set TLS_SERVER_NAME to the name FHEM connects to}
+      # The base file sets HEALTHCHECK_HOST=127.0.0.1; verify against the certificate name instead.
+      HEALTHCHECK_SERVERNAME: ${TLS_SERVER_NAME}
+      TLS_CA_KEY_FILE: /certs/custom-ca.key
+      TLS_CA_CERT_FILE: /certs/custom-ca.crt
+      TLS_SERVER_KEY_FILE: /data/tls/server.key
+      TLS_SERVER_CERT_FILE: /data/tls/server.crt
+    volumes:
+      - ./custom-ca/ca.key:/certs/custom-ca.key:ro
+      - ./custom-ca/ca.crt:/certs/custom-ca.crt:ro

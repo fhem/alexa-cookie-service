@@ -195,6 +195,53 @@ Die Fehlerursache eines fehlgeschlagenen Healthchecks (z. B.
 
 ## TLS-Konfiguration
 
+### Fertige Compose-Dateien
+
+Fuer jede TLS-Variante liegt unter [compose/](./compose) eine Override-Datei, die
+zusammen mit der Basis-[docker-compose.yml](./docker-compose.yml) verwendet wird:
+
+| Variante | Datei | Abschnitt |
+| --- | --- | --- |
+| Standard TLS (lokale CA vom Service) | [compose/tls-managed.yml](./compose/tls-managed.yml) | [Standard TLS](#standard-tls) |
+| Eigene Root-/Intermediate-CA, auch extern verwaltet | [compose/tls-custom-ca.yml](./compose/tls-custom-ca.yml) | [Eigene Root-CA](#eigene-root-ca) |
+| Bereitgestelltes Serverzertifikat (oeffentlich vertraute CA) | [compose/tls-external.yml](./compose/tls-external.yml) | [Bereitgestelltes Serverzertifikat](#bereitgestelltes-serverzertifikat) |
+| Zusatz fuer eine private CA beim bereitgestellten Zertifikat | [compose/tls-external-private-ca.yml](./compose/tls-external-private-ca.yml) | dito |
+
+```text
+docker compose -f docker-compose.yml -f compose/tls-managed.yml up -d
+TLS_SERVER_NAME=acs.example.internal docker compose -f docker-compose.yml -f compose/tls-external.yml -f compose/tls-external-private-ca.yml up -d
+```
+
+Voraussetzungen und Verhalten der Dateien:
+
+- **`TLS_SERVER_NAME` (Pflicht):** Muss als Umgebungsvariable beim Aufruf von
+  `docker compose` gesetzt sein, sonst bricht Compose mit einer Fehlermeldung ab.
+  Der Wert ist der DNS-Name, ueber den FHEM den Service aufruft (z. B. in der
+  HTTPMOD-URL). Bei `tls-managed.yml` und `tls-custom-ca.yml` wird das
+  Serverzertifikat fuer diesen Namen ausgestellt; bei `tls-external.yml` muss der
+  Name im bereitgestellten Zertifikat enthalten sein.
+- **`HEALTHCHECK_SERVERNAME`:** Wird von den Dateien automatisch auf den Wert von
+  `TLS_SERVER_NAME` gesetzt. Die Basisdatei setzt `HEALTHCHECK_HOST=127.0.0.1`, der
+  Healthcheck verbindet sich also ueber die Loopback-Adresse. Ohne
+  `HEALTHCHECK_SERVERNAME` wuerde das Zertifikat gegen `127.0.0.1` geprueft und
+  der Container als `unhealthy` markiert.
+- **Zertifikatsdateien:** Die vom Host bereitgestellten Dateien (CA-Key, CA-Zertifikat,
+  Leaf-Key, Leaf-Zertifikat) werden schreibgeschuetzt nach `/certs` im Container
+  eingebunden, nicht nach `/data/tls`. Der Service schreibt weiterhin selbst
+  erzeugte Dateien nach `/data/tls`.
+- **Benoetigte Host-Dateien:** Welche Dateien du auf dem Host anlegen musst, steht
+  als Kommentar am Anfang (in den ersten Zeilen) der jeweiligen Datei unter
+  `compose/`, direkt vor dem Block `services:`:
+
+  | Datei | Erwartete Dateien auf dem Host |
+  | --- | --- |
+  | `tls-managed.yml` | keine (alles liegt in `./data/tls`) |
+  | `tls-custom-ca.yml` | `./custom-ca/ca.key`, `./custom-ca/ca.crt` |
+  | `tls-external.yml` | `./leaf/server.key`, `./leaf/server.crt` |
+  | `tls-external-private-ca.yml` | `./leaf/ca.crt` (zusaetzlich) |
+
+  Die Pfade sind relativ zum Verzeichnis der Basisdatei `docker-compose.yml`.
+
 ### Standard TLS
 
 Das ist der empfohlene Standardfall fuer neue Installationen.

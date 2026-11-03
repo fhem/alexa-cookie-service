@@ -1,0 +1,15 @@
+# TLS variant: managed (default). The service generates and renews a local CA and
+# server certificate under /data/tls. FHEM must trust /data/tls/ca.crt.
+#
+# Usage (from the repository root):
+#   TLS_SERVER_NAME=acs.example.internal \
+#     docker compose -f docker-compose.yml -f compose/tls-managed.yml up -d
+services:
+  alexa-cookie-service:
+    environment:
+      TLS_ENABLED: "true"
+      TLS_SERVER_CERT_MODE: managed
+      # Name FHEM uses to reach the service; used for the certificate.
+      TLS_SERVER_NAME: ${TLS_SERVER_NAME:?set TLS_SERVER_NAME to the name FHEM connects to}
+      # The base file sets HEALTHCHECK_HOST=127.0.0.1; verify against the certificate name instead.
+      HEALTHCHECK_SERVERNAME: ${TLS_SERVER_NAME}
