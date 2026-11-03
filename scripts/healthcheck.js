@@ -35,6 +35,7 @@ const req = client.request(
     if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
       process.exit(0);
     }
+    console.error(`healthcheck failed: HTTP ${res.statusCode}`);
     process.exit(1);
   }
 );
@@ -45,6 +46,7 @@ req.on('error', (err) => {
 });
 req.on('timeout', () => {
   req.destroy();
+  console.error('healthcheck failed: timeout');
   process.exit(1);
 });
 req.end();
