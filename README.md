@@ -212,11 +212,35 @@ docker compose -f docker-compose.yml -f compose/tls-managed.yml up -d
 TLS_SERVER_NAME=acs.example.internal docker compose -f docker-compose.yml -f compose/tls-external.yml -f compose/tls-external-private-ca.yml up -d
 ```
 
-`TLS_SERVER_NAME` ist bei allen Varianten Pflicht und muss dem Namen entsprechen,
-den FHEM anspricht. Die Dateien setzen ausserdem `HEALTHCHECK_SERVERNAME`, damit der
-Healthcheck trotz `HEALTHCHECK_HOST=127.0.0.1` gegen diesen Namen prueft.
-Die Zertifikatsdateien werden unter `/certs` statt in `/data/tls` eingebunden. Die erwarteten Host-Dateien
-(`./custom-ca/`, `./leaf/`) stehen im Kopf der jeweiligen Datei.
+Voraussetzungen und Verhalten der Dateien:
+
+- **`TLS_SERVER_NAME` (Pflicht):** Muss als Umgebungsvariable beim Aufruf von
+  `docker compose` gesetzt sein, sonst bricht Compose mit einer Fehlermeldung ab.
+  Der Wert ist der DNS-Name, ueber den FHEM den Service aufruft (z. B. in der
+  HTTPMOD-URL). Bei `tls-managed.yml` und `tls-custom-ca.yml` wird das
+  Serverzertifikat fuer diesen Namen ausgestellt; bei `tls-external.yml` muss der
+  Name im bereitgestellten Zertifikat enthalten sein.
+- **`HEALTHCHECK_SERVERNAME`:** Wird von den Dateien automatisch auf den Wert von
+  `TLS_SERVER_NAME` gesetzt. Die Basisdatei setzt `HEALTHCHECK_HOST=127.0.0.1`, der
+  Healthcheck verbindet sich also ueber die Loopback-Adresse. Ohne
+  `HEALTHCHECK_SERVERNAME` wuerde das Zertifikat gegen `127.0.0.1` geprueft und
+  der Container als `unhealthy` markiert.
+- **Zertifikatsdateien:** Die vom Host bereitgestellten Dateien (CA-Key, CA-Zertifikat,
+  Leaf-Key, Leaf-Zertifikat) werden schreibgeschuetzt nach `/certs` im Container
+  eingebunden, nicht nach `/data/tls`. Der Service schreibt weiterhin selbst
+  erzeugte Dateien nach `/data/tls`.
+- **Benoetigte Host-Dateien:** Welche Dateien du auf dem Host anlegen musst, steht
+  als Kommentar am Anfang (in den ersten Zeilen) der jeweiligen Datei unter
+  `compose/`, direkt vor dem Block `services:`:
+
+  | Datei | Erwartete Dateien auf dem Host |
+  | --- | --- |
+  | `tls-managed.yml` | keine (alles liegt in `./data/tls`) |
+  | `tls-custom-ca.yml` | `./custom-ca/ca.key`, `./custom-ca/ca.crt` |
+  | `tls-external.yml` | `./leaf/server.key`, `./leaf/server.crt` |
+  | `tls-external-private-ca.yml` | `./leaf/ca.crt` (zusaetzlich) |
+
+  Die Pfade sind relativ zum Verzeichnis der Basisdatei `docker-compose.yml`.
 
 ### Standard TLS
 
