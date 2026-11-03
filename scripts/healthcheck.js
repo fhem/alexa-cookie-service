@@ -2,6 +2,7 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const path = require('path');
+const config = require('../src/config');
 
 const tlsEnabled = ['1', 'true', 'yes', 'on'].includes(String(process.env.TLS_ENABLED || '').toLowerCase());
 const tlsDir = process.env.TLS_DIR || path.join(process.env.DATA_DIR || '/data', 'tls');
@@ -10,10 +11,15 @@ const port = process.env.PORT || 58080;
 const host = process.env.HEALTHCHECK_HOST || '127.0.0.1';
 const agentOptions = {};
 if (tlsEnabled) {
-  // Validate the certificate against the service name instead of the connect target, so
-  // certificates without IP:127.0.0.1 in their SAN (e.g. from a private CA) still pass.
-  agentOptions.servername = process.env.HEALTHCHECK_SERVERNAME ||
-    process.env.TLS_SERVER_NAME || 'alexa-cookie-service';
+  // With the default loopback target, validate the certificate against the service name so
+  // certificates without IP:127.0.0.1 in their SAN (e.g. from a private CA) still pass. An
+  // explicit HEALTHCHECK_HOST keeps being verified (and sent as SNI) as itself unless
+  // HEALTHCHECK_SERVERNAME overrides it.
+  const serverName = String(process.env.HEALTHCHECK_SERVERNAME || '').trim() ||
+    (process.env.HEALTHCHECK_HOST ? '' : config.tlsServerName);
+  if (serverName) {
+    agentOptions.servername = serverName;
+  }
   const tlsCaCertFile = process.env.TLS_CA_CERT_FILE ||
     (tlsServerCertMode === 'managed' ? path.join(tlsDir, 'ca.crt') : undefined);
   if (tlsCaCertFile) {

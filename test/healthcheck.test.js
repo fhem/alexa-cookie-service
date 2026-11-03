@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { generateCertificateAuthority, generateServerCertificate } = require('./helpers/tls-test-utils');
 
@@ -25,6 +26,17 @@ function waitForServer(child) {
     child.on('exit', (code) => {
       clearTimeout(timeout);
       reject(new Error('server exited early with code ' + code));
+    });
+  });
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
     });
   });
 }
@@ -132,7 +144,7 @@ test('healthcheck passes for an external certificate without 127.0.0.1 in its SA
   });
 
   const tlsEnv = {
-    PORT: '58153',
+    PORT: String(await getFreePort()),
     TLS_ENABLED: 'true',
     TLS_SERVER_CERT_MODE: 'external',
     TLS_SERVER_NAME: serverName,
@@ -177,8 +189,16 @@ test('healthcheck passes for an external certificate without 127.0.0.1 in its SA
     const mismatch = await run({ HEALTHCHECK_SERVERNAME: 'other.example.internal' });
     assert.equal(mismatch.code, 1);
     assert.match(mismatch.stderr, /ERR_TLS_CERT_ALTNAME_INVALID/);
+
+    // Pins the original failure: verifying against the loopback address itself.
+    const loopback = await run({ HEALTHCHECK_HOST: '127.0.0.1' });
+    assert.equal(loopback.code, 1);
+    assert.match(loopback.stderr, /ERR_TLS_CERT_ALTNAME_INVALID/);
+
+    assert.equal((await run({ HEALTHCHECK_HOST: '127.0.0.1', HEALTHCHECK_SERVERNAME: serverName })).code, 0);
   } finally {
     child.kill('SIGTERM');
     await waitForExit(child);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
