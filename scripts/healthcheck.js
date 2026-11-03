@@ -2,6 +2,7 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const path = require('path');
+const config = require('../src/config');
 
 const tlsEnabled = ['1', 'true', 'yes', 'on'].includes(String(process.env.TLS_ENABLED || '').toLowerCase());
 const tlsDir = process.env.TLS_DIR || path.join(process.env.DATA_DIR || '/data', 'tls');
@@ -10,6 +11,15 @@ const port = process.env.PORT || 58080;
 const host = process.env.HEALTHCHECK_HOST || '127.0.0.1';
 const agentOptions = {};
 if (tlsEnabled) {
+  // With the default loopback target, validate the certificate against the service name so
+  // certificates without IP:127.0.0.1 in their SAN (e.g. from a private CA) still pass. An
+  // explicit HEALTHCHECK_HOST keeps being verified (and sent as SNI) as itself unless
+  // HEALTHCHECK_SERVERNAME overrides it.
+  const serverName = String(process.env.HEALTHCHECK_SERVERNAME || '').trim() ||
+    (process.env.HEALTHCHECK_HOST ? '' : config.tlsServerName);
+  if (serverName) {
+    agentOptions.servername = serverName;
+  }
   const tlsCaCertFile = process.env.TLS_CA_CERT_FILE ||
     (tlsServerCertMode === 'managed' ? path.join(tlsDir, 'ca.crt') : undefined);
   if (tlsCaCertFile) {
@@ -31,13 +41,18 @@ const req = client.request(
     if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
       process.exit(0);
     }
+    console.error(`healthcheck failed: HTTP ${res.statusCode}`);
     process.exit(1);
   }
 );
 
-req.on('error', () => process.exit(1));
+req.on('error', (err) => {
+  console.error(`healthcheck failed: ${err.code || err.message}`);
+  process.exit(1);
+});
 req.on('timeout', () => {
   req.destroy();
+  console.error('healthcheck failed: timeout');
   process.exit(1);
 });
 req.end();
