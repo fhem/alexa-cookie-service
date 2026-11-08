@@ -15,6 +15,13 @@
   },
   "packageRules": [
     {
+      "description": "Patch updates are merged automatically",
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "automerge": true
+    },
+    {
       "matchManagers": [
         "npm"
       ],
